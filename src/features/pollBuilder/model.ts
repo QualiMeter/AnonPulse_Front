@@ -1,4 +1,4 @@
-import type { Poll } from '../../data/demoPolls'
+import type { Poll } from '../../types/polls'
 
 // clientId служит только ключом локальной формы и не является ID с сервера.
 export type BuilderOption = { clientId: string; text: string }
@@ -49,4 +49,22 @@ export function validateForm(form: BuilderForm): ValidationErrors {
     })
   }
   return errors
+}
+
+export function mapServerValidation(form: BuilderForm, errors?: Record<string, string[]>): ValidationErrors {
+  const mapped: ValidationErrors = {}
+  for (const [key, messages] of Object.entries(errors ?? {})) {
+    const message = messages.join(' ')
+    const question = /^Questions\[(\d+)\](?:\.(.*))?$/i.exec(key)
+    if (!question) { mapped.questions = `${key}: ${message}`; continue }
+    const item = form.questions[Number(question[1])]
+    if (!item) { mapped.questions = message; continue }
+    const field = question[2] ?? ''
+    const option = /^Options\[(\d+)\]/i.exec(field)
+    if (option) {
+      const selected = item.options[Number(option[1])]
+      mapped[selected ? `option:${selected.clientId}` : `question:${item.clientId}:options`] = message
+    } else mapped[`question:${item.clientId}:${/^text$/i.test(field) ? 'text' : 'options'}`] = message
+  }
+  return mapped
 }

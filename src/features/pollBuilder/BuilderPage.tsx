@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../components/Icon'
-import type { Poll } from '../../data/demoPolls'
-import { createForm, moveQuestion, newOption, newQuestion, validateForm, type BuilderForm, type BuilderQuestion } from './model'
+import type { Poll } from '../../types/polls'
+import { ApiError } from '../../api/client'
+import { createForm, mapServerValidation, moveQuestion, newOption, newQuestion, validateForm, type BuilderForm, type BuilderQuestion, type ValidationErrors } from './model'
 import './builder.css'
 
 type Props = {
@@ -9,7 +10,7 @@ type Props = {
   poll?: Poll
   navigate: (to: string) => void
   onDirtyChange: (dirty: boolean) => void
-  onDemoSave: (form: BuilderForm) => void
+  onSave: (form: BuilderForm) => Promise<string>
 }
 
 function questionLabel(question: BuilderQuestion, index: number) {
@@ -52,17 +53,22 @@ function Preview({ form, onClose }: { form: BuilderForm; onClose: () => void }) 
   </div>
 }
 
-export default function BuilderPage({ mode, poll, navigate, onDirtyChange, onDemoSave }: Props) {
+export default function BuilderPage({ mode, poll, navigate, onDirtyChange, onSave }: Props) {
   const [form, setForm] = useState<BuilderForm>(() => createForm(poll))
   const initialSnapshot = useRef(JSON.stringify(form))
   const [showErrors, setShowErrors] = useState(false)
+  const [serverErrors, setServerErrors] = useState<ValidationErrors>({})
+  const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [activeQuestion, setActiveQuestion] = useState<string | null>(form.questions[0]?.clientId ?? null)
   const validation = useMemo(() => validateForm(form), [form])
-  const errors = showErrors ? validation : {}
+  const errors = showErrors ? { ...validation, ...serverErrors } : serverErrors
   const dirty = JSON.stringify(form) !== initialSnapshot.current
   const errorCount = Object.keys(validation).length
+
+  useEffect(() => { setServerErrors({}); setSaveError('') }, [form])
 
   useEffect(() => {
     onDirtyChange(dirty)
@@ -125,15 +131,27 @@ export default function BuilderPage({ mode, poll, navigate, onDirtyChange, onDem
     return errorCount === 0
   }
 
-  function saveDemo() {
+  async function save() {
+    if (saving) return
     if (!checkForm()) return
-    onDirtyChange(false)
-    onDemoSave(form)
+    setSaving(true)
+    setSaveError('')
+    setServerErrors({})
+    try {
+      const id = await onSave(form)
+      onDirtyChange(false)
+      navigate(`/app/polls/${id}`)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setServerErrors(mapServerValidation(form, error.problem?.errors))
+        setSaveError(error.status === 400 ? 'Сервер отклонил данные. Проверьте отмеченные поля.' : error.status === 403 ? 'Нет доступа к этому опросу.' : error.status === 404 ? 'Черновик не найден. Возможно, он был удалён.' : error.status === 409 ? 'Этот опрос больше нельзя редактировать. Обновите страницу.' : error.status === null ? error.message : 'Не удалось сохранить опрос. Попробуйте ещё раз.')
+      } else setSaveError(error instanceof Error ? error.message : 'Не удалось сохранить опрос.')
+    } finally { setSaving(false) }
   }
 
   return <div className="page builder-page">
     <nav className="breadcrumbs" aria-label="Путь к странице"><button className="breadcrumb-button" type="button" onClick={() => navigate('/app/polls')}>Опросы</button><Icon name="chevronRight" size={15} />{mode === 'edit' && poll && <><button className="breadcrumb-button breadcrumb-button--truncate" type="button" onClick={() => navigate(`/app/polls/${poll.id}`)}>{poll.title || poll.questions[0]?.text || 'Опрос без названия'}</button><Icon name="chevronRight" size={15} /></>}<span aria-current="page">{mode === 'create' ? 'Новый опрос' : 'Редактирование'}</span></nav>
-    <div className="builder-heading"><div><p className="eyebrow">{mode === 'create' ? 'НОВЫЙ ОПРОС' : 'РЕДАКТИРОВАНИЕ ЧЕРНОВИКА'}</p><h1>{mode === 'create' ? 'Создать опрос' : 'Изменить черновик'}</h1><p>{mode === 'create' ? 'Соберите вопросы и варианты ответа. Студент сможет выбрать один вариант в каждом вопросе.' : 'Название, вопросы и варианты заменяются целиком. Сейчас изменения сохраняются только в деморежиме.'}</p></div><button className="button button--preview" type="button" onClick={() => setPreviewOpen(true)}><Icon name="eye" size={17} />Предпросмотр</button></div>
+    <div className="builder-heading"><div><p className="eyebrow">{mode === 'create' ? 'НОВЫЙ ОПРОС' : 'РЕДАКТИРОВАНИЕ ЧЕРНОВИКА'}</p><h1>{mode === 'create' ? 'Создать опрос' : 'Изменить черновик'}</h1><p>{mode === 'create' ? 'Соберите вопросы и варианты ответа. Студент сможет выбрать один вариант в каждом вопросе.' : 'Название, вопросы и варианты будут полностью заменены после сохранения на сервере.'}</p></div><button className="button button--preview" type="button" onClick={() => setPreviewOpen(true)}><Icon name="eye" size={17} />Предпросмотр</button></div>
 
     <div className="builder-grid">
       <div className="builder-main">
@@ -157,11 +175,12 @@ export default function BuilderPage({ mode, poll, navigate, onDirtyChange, onDem
         {form.questions.length > 0 && <button className="builder-add-question" type="button" onClick={addQuestion}><Icon name="plus" size={20} /><span>Добавить ещё вопрос</span></button>}
       </div>
 
-      <aside className="builder-aside" aria-label="Структура опроса"><div className="builder-outline"><div className="builder-outline__header"><div><p className="eyebrow">НАВИГАЦИЯ</p><h2>Структура опроса</h2></div><span>{form.questions.length}</span></div><div className="builder-outline__items">{form.questions.length === 0 ? <p className="builder-outline__empty">Вопросы появятся здесь</p> : form.questions.map((question, index) => <button key={question.clientId} type="button" className={`builder-outline__item ${activeQuestion === question.clientId ? 'builder-outline__item--active' : ''}`} onClick={() => scrollToQuestion(question.clientId)}><span>{String(index + 1).padStart(2, '0')}</span><span>{questionLabel(question, index)}</span></button>)}</div><div className="builder-outline__footer"><Icon name="info" size={17} /><p>Порядок вопросов можно менять стрелками на карточках.</p></div></div><div className="builder-aside__note"><Icon name="lock" size={18} /><p>Редактирование доступно только для черновиков. Демо-сохранение действует до обновления вкладки.</p></div></aside>
+      <aside className="builder-aside" aria-label="Структура опроса"><div className="builder-outline"><div className="builder-outline__header"><div><p className="eyebrow">НАВИГАЦИЯ</p><h2>Структура опроса</h2></div><span>{form.questions.length}</span></div><div className="builder-outline__items">{form.questions.length === 0 ? <p className="builder-outline__empty">Вопросы появятся здесь</p> : form.questions.map((question, index) => <button key={question.clientId} type="button" className={`builder-outline__item ${activeQuestion === question.clientId ? 'builder-outline__item--active' : ''}`} onClick={() => scrollToQuestion(question.clientId)}><span>{String(index + 1).padStart(2, '0')}</span><span>{questionLabel(question, index)}</span></button>)}</div><div className="builder-outline__footer"><Icon name="info" size={17} /><p>Порядок вопросов можно менять стрелками на карточках.</p></div></div><div className="builder-aside__note"><Icon name="lock" size={18} /><p>После публикации редактирование недоступно.</p></div></aside>
     </div>
 
-    <div className="builder-footer"><div className="builder-footer__state"><span className={`builder-footer__dot ${dirty ? 'builder-footer__dot--dirty' : ''}`} /><div><strong>{dirty ? 'Есть несохранённые изменения' : mode === 'edit' ? 'Черновик открыт для редактирования' : 'Новый опрос'}</strong><span>Демо-изменения сохраняются только в текущей вкладке</span></div></div><div className="builder-footer__actions"><button type="button" className="button button--check" onClick={checkForm}><Icon name="check" size={17} />Проверить форму</button><button type="button" className="button button--primary" onClick={saveDemo}><Icon name="check" size={16} />Сохранить в демо</button></div></div>
-    {showErrors && <div className={`builder-validation ${errorCount ? 'builder-validation--error' : 'builder-validation--success'}`} role="status"><Icon name={errorCount ? 'alert' : 'check'} size={18} /><span>{errorCount ? `Найдены ошибки: ${errorCount}. Исправьте отмеченные поля.` : 'Форма заполнена корректно. Можно сохранить её в деморежиме.'}</span></div>}
+    <div className="builder-footer"><div className="builder-footer__state"><span className={`builder-footer__dot ${dirty ? 'builder-footer__dot--dirty' : ''}`} /><div><strong>{dirty ? 'Есть несохранённые изменения' : mode === 'edit' ? 'Черновик открыт для редактирования' : 'Новый опрос'}</strong><span>Сохранение на сервере после проверки формы</span></div></div><div className="builder-footer__actions"><button type="button" className="button button--check" onClick={checkForm}><Icon name="check" size={17} />Проверить форму</button><button type="button" className="button button--primary" onClick={() => void save()} disabled={saving}><Icon name="check" size={16} />{saving ? 'Сохраняем…' : 'Сохранить опрос'}</button></div></div>
+    {saveError && <div className="builder-validation builder-validation--error" role="alert"><Icon name="alert" size={18} /><span>{saveError}</span></div>}
+    {showErrors && <div className={`builder-validation ${errorCount ? 'builder-validation--error' : 'builder-validation--success'}`} role="status"><Icon name={errorCount ? 'alert' : 'check'} size={18} /><span>{errorCount ? `Найдены ошибки: ${errorCount}. Исправьте отмеченные поля.` : 'Форма заполнена корректно. Можно сохранить её.'}</span></div>}
     {previewOpen && <Preview form={form} onClose={() => setPreviewOpen(false)} />}
   </div>
 }
