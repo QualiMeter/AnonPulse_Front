@@ -1,5 +1,5 @@
 import { ApiError, apiRequest } from './client'
-import type { Decision, Poll, PollDraft, PollResults, PublicPoll } from '../types/polls'
+import type { Decision, IdentifiedSubmission, PagedResponse, Poll, PollDraft, PollResults, PublicPoll, TestAttempt, TextAnswer } from '../types/polls'
 export type { PollDraft } from '../types/polls'
 
 export type PublicAnswer = { questionId: string; optionId: string } | { questionId: string; text: string }
@@ -16,6 +16,9 @@ export const pollsApi = {
   publish: (id: string) => apiRequest<Poll>(`${pollPath(id)}/publish`, { method: 'POST', authRequired: true }),
   close: (id: string) => apiRequest<Poll>(`${pollPath(id)}/close`, { method: 'POST', authRequired: true }),
   results: (id: string, signal?: AbortSignal, authRequired = false) => apiRequest<PollResults>(`${pollPath(id)}/results`, { signal, authRequired }),
+  textAnswers: (id: string, questionId: string, page = 1, signal?: AbortSignal) => apiRequest<PagedResponse<TextAnswer>>(`${pollPath(id)}/questions/${encodeURIComponent(questionId)}/text-answers?page=${page}&pageSize=20`, { signal, authRequired: true, cache: 'no-store' }),
+  submissions: (id: string, page = 1, signal?: AbortSignal) => apiRequest<PagedResponse<IdentifiedSubmission>>(`${pollPath(id)}/submissions?page=${page}&pageSize=20`, { signal, authRequired: true, cache: 'no-store' }),
+  testAttempts: (id: string, page = 1, signal?: AbortSignal) => apiRequest<PagedResponse<TestAttempt>>(`${pollPath(id)}/test-attempts?page=${page}&pageSize=20`, { signal, authRequired: true, cache: 'no-store' }),
   decision: (id: string, signal?: AbortSignal) => apiRequest<Decision>(`${pollPath(id)}/decision`, { signal }),
   putDecision: (id: string, text: string) => apiRequest<Decision>(`${pollPath(id)}/decision`, { method: 'PUT', body: { text }, authRequired: true }),
   publicPoll: (id: string, signal?: AbortSignal) => apiRequest<PublicPoll>(publicPollPath(id), { signal }),

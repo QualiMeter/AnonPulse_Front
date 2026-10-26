@@ -1,0 +1,71 @@
+.teacher-private-results { display: grid; gap: 34px; margin-top: 38px; }
+.teacher-private-section { min-width: 0; }
+.teacher-private-intro { margin: -5px 0 17px; color: #708076; font-size: 13px; line-height: 1.55; }
+.teacher-text-questions, .teacher-person-list { display: grid; gap: 12px; }
+.teacher-text-questions > div { min-width: 0; }
+.teacher-text-questions h3 { display: flex; align-items: baseline; gap: 12px; color: #26392e; font-size: 15px; line-height: 1.45; margin: 0 0 9px; }
+.teacher-text-questions h3 span { color: #80a38d; font-size: 11px; font-weight: 760; }
+.teacher-private-card, .teacher-person { border: 1px solid #e3eae2; border-radius: 11px; background: #fff; box-shadow: 0 7px 22px rgba(30,46,36,.018); }
+.teacher-private-card__toggle { display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%; padding: 16px 20px; border: 0; border-radius: inherit; color: #33473b; background: transparent; text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.teacher-private-card__toggle > span:last-child { display: inline-flex; align-items: center; gap: 7px; color: #168066; font-weight: 700; white-space: nowrap; }
+.teacher-private-card__body { padding: 0 20px 20px; }
+.teacher-data-state { margin: 0; padding: 24px; border: 1px dashed #d8e4d8; border-radius: 10px; color: #718076; background: #f8faf7; font-size: 13px; line-height: 1.55; }
+.teacher-data-state p { margin: 0 0 12px; }
+.teacher-data-state button, .teacher-pages button, .teacher-test-summary button { min-height: 38px; padding: 7px 13px; border: 1px solid #cfe1d3; border-radius: 8px; color: #176d58; background: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.teacher-pages button:disabled { color: #aab6ad; cursor: default; }
+.teacher-text-list { display: grid; gap: 8px; margin: 0; padding-left: 25px; color: #8ba095; }
+.teacher-text-list li { padding: 12px 14px; border-radius: 8px; background: #f5f8f4; color: #304137; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.teacher-pages { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; color: #78897b; font-size: 12px; }
+.teacher-person { overflow: hidden; }
+.teacher-person summary { display: flex; align-items: center; gap: 13px; min-height: 64px; padding: 12px 18px; color: #304137; list-style: none; cursor: pointer; }
+.teacher-person summary::-webkit-details-marker { display: none; }
+.teacher-person summary > strong, .teacher-person__identity { flex: 1; min-width: 0; }
+.teacher-person summary > span:nth-last-child(2) { color: #5a8069; font-size: 12px; }
+.teacher-person__index { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 8px; color: #447e62; background: #eaf3eb; font-size: 11px; font-weight: 750; }
+.teacher-person__identity { display: grid; gap: 3px; }
+.teacher-person__identity strong { font-size: 14px; }
+.teacher-person__identity small { color: #899a8d; font-size: 12px; }
+.teacher-person__result { max-width: 260px; text-align: right; line-height: 1.4; }
+.teacher-person--test .teacher-person__result { display: grid; gap: 2px; max-width: 330px; color: #294537; }
+.teacher-person--test .teacher-person__result strong { font-size: 22px; font-weight: 750; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.teacher-person--test .teacher-person__result small { color: #74877a; font-size: 11px; line-height: 1.35; }
+.teacher-person--test .teacher-person__result small:last-child { color: #2f785c; font-weight: 700; }
+.teacher-answer-list { display: grid; gap: 0; margin: 0; padding: 0 20px 10px; list-style: none; border-top: 1px solid #edf1eb; }
+.teacher-answer-list li { display: flex; gap: 15px; padding: 16px 0; border-bottom: 1px solid #f0f2ee; min-width: 0; }
+.teacher-answer-list li:last-child { border-bottom: 0; }
+.teacher-answer-list__number { color: #84a793; font-size: 11px; font-weight: 760; }
+.teacher-answer-list li > div { min-width: 0; }
+.teacher-answer-list strong { color: #314139; font-size: 13px; line-height: 1.5; }
+.teacher-answer-list__label { display: block; margin-bottom: 4px; color: #91a297; font-size: 10px; font-weight: 760; letter-spacing: .07em; text-transform: uppercase; }
+.teacher-answer-list__response { margin-top: 10px; padding: 10px 12px; border-left: 2px solid #b7d6bf; border-radius: 0 7px 7px 0; background: #f7faf6; }
+.teacher-answer-list__response p { margin: 0; color: #304137; }
+.teacher-answer-list p { margin: 6px 0 0; color: #647468; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.teacher-answer-list .teacher-answer-list__response p { margin: 0; color: #304137; }
+.teacher-answer-list__score { display: inline-block; margin-top: 9px; color: #247859; font-size: 12px; font-weight: 700; }
+.teacher-test-summary { display: flex; align-items: center; gap: 30px; padding: 24px 30px; margin: 0 0 32px; border-radius: 12px; color: #fff; background: #1d3b34; }
+.teacher-test-summary > div { display: flex; align-items: baseline; gap: 8px; }
+.teacher-test-summary strong { font-size: 34px; font-weight: 670; letter-spacing: -.05em; }
+.teacher-test-summary span { color: #bad2c0; font-size: 12px; }
+.teacher-test-summary__scale { color: #bad2c0; font-size: 13px; }
+.teacher-test-summary .teacher-test-summary__scale strong { color: #fff; font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.teacher-test-summary button { margin-left: auto; }
+.teacher-attempt-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 22px; padding: 18px 20px; border-top: 1px solid #edf1eb; color: #5b7162; background: #f0f6ef; font-size: 12px; line-height: 1.5; }
+.teacher-attempt-summary > div { display: grid; gap: 3px; }
+.teacher-attempt-summary strong { color: #294b39; font-size: 16px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.teacher-attempt-summary p { grid-column: 1 / -1; margin: 4px 0 0; color: #49725a; font-weight: 650; }
+.teacher-private-card__toggle:focus-visible, .teacher-person summary:focus-visible, .teacher-pages button:focus-visible, .teacher-test-summary button:focus-visible { outline: 3px solid #65b88e; outline-offset: 2px; }
+@media (max-width: 640px) {
+  .teacher-private-results { margin-top: 28px; gap: 30px; }
+  .teacher-private-card__toggle, .teacher-person summary { padding: 13px 14px; }
+  .teacher-private-card__body { padding: 0 14px 14px; }
+  .teacher-person--test summary { display: grid; grid-template-columns: 32px minmax(0, 1fr) 18px; }
+  .teacher-person--test .teacher-person__result { grid-column: 2; grid-row: 2; max-width: none; text-align: left; }
+  .teacher-person--test .teacher-person__result strong { font-size: 20px; }
+  .teacher-person--test summary > .icon { grid-column: 3; grid-row: 1; }
+  .teacher-person summary { gap: 9px; }
+  .teacher-answer-list { padding: 0 14px 6px; }
+  .teacher-test-summary { gap: 10px 18px; flex-wrap: wrap; padding: 20px; }
+  .teacher-test-summary button { margin-left: 0; }
+  .teacher-attempt-summary { grid-template-columns: 1fr; padding: 16px; }
+  .teacher-pages { flex-wrap: wrap; }
+}

@@ -59,6 +59,25 @@ export type PollResults = {
 }
 export type Decision = { id: string; pollId: string; text: string; publishedAt: string }
 
+export type PagedResponse<T> = { items: T[]; page: number; pageSize: number; totalCount: number; totalPages: number }
+export type TextAnswer = { id: string; text: string }
+export type IdentifiedSubmission = { id: string; respondentName: string; answers: Array<{ questionId: string; selectedOptionIds: string[]; text: string | null }> }
+export type TestAttemptAnswer = { questionId: string; selectedOptionIds: string[]; text: string | null; gradingState: string; score: number | null; maximumScore: number }
+export type TestAttempt = {
+  id: string
+  respondentName: string
+  respondentGroup: string
+  state: string
+  createdAt: string
+  completedAt: string
+  rawScore: number
+  maximumScore: number
+  normalizedScore: number | null
+  isFullyGraded: boolean
+  isFinal: boolean
+  answers: TestAttemptAnswer[]
+}
+
 export function getPollKind(poll: Pick<Poll, 'kind'> | Pick<PublicPoll, 'kind'>): PollKind { return poll.kind ?? 'survey' }
 export function getResponseMode(poll: Pick<Poll, 'responseMode'> | Pick<PublicPoll, 'responseMode'>): ResponseMode { return poll.responseMode ?? 'anonymous' }
 export function getQuestionType(question: Pick<PollQuestion, 'type' | 'allowsMultipleAnswers'>): QuestionType {

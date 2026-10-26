@@ -10,6 +10,7 @@ import PublicVotingPage from './features/publicVoting/PublicVotingPage'
 import PublicResultsPage from './features/publicVoting/PublicResultsPage'
 import DecisionPanel from './features/decisions/DecisionPanel'
 import LoginPage from './features/auth/LoginPage'
+import { SurveyPrivateResults, TestAttempts } from './features/teacherResults/TeacherResultDetails'
 import { authApi, type CurrentUser } from './api/auth'
 import { ApiError } from './api/client'
 import { pollsApi } from './api/polls'
@@ -85,7 +86,7 @@ function Shell({ children, navigate, user, onLogout, logoutBusy, logoutError }: 
     <div className="app-layout">
       <aside className="side-nav" aria-label="Навигация">
         <span className="side-nav__eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</span>
-        <AppLink to="/app/polls" navigate={navigate} className="side-nav__item side-nav__item--active"><Icon name="layers" size={19} /><span>Опросы</span></AppLink>
+        <AppLink to="/app/polls" navigate={navigate} className="side-nav__item side-nav__item--active"><Icon name="layers" size={19} /><span>Опросы и тесты</span></AppLink>
         <div className="side-nav__footer"><span className="side-nav__footer-icon"><Icon name="info" size={17} /></span><p>Обратная связь<br />от опроса до решения</p></div>
       </aside>
       <main className="main-content" id="main-content">{logoutError && <p className="session-error" role="alert">{logoutError}</p>}{children}</main>
@@ -138,7 +139,7 @@ function Breadcrumbs({ poll, navigate, current }: { poll?: Poll; navigate: (to: 
 }
 
 function DetailPage({ poll, navigate, decision, onPublish, onRequestClose, notice, actionBusy, actionError }: { poll: Poll; navigate: (to: string) => void; decision?: string; onPublish: () => void; onRequestClose: () => void; notice?: string; actionBusy: boolean; actionError?: string }) {
-  const hasResults = poll.status !== 'draft' && getPollKind(poll) === 'survey'
+  const hasResults = poll.status !== 'draft' && (getPollKind(poll) === 'survey' || poll.status === 'closed')
   const [copyFeedback, setCopyFeedback] = useState('')
   async function copyVotingLink() {
     try {
@@ -179,6 +180,7 @@ function ResultsPage({ poll, results, navigate, decision, decisionStatus, onRetr
     <div className="results-layout"><div className="results-main"><div className="section-title"><div><p className="eyebrow">РАСПРЕДЕЛЕНИЕ ОТВЕТОВ</p><h2>По каждому вопросу</h2></div></div>
       {results.totalParticipants === 0 && <div className="zero-results"><Icon name="barChart" size={20} /><span>Ответов пока нет. Распределение появится после первого участия.</span></div>}
       <ResultDistribution questions={results.questions} totalParticipants={results.totalParticipants} />
+      <SurveyPrivateResults poll={poll} textQuestions={results.questions.filter(question => question.type === 'text')} />
     </div><aside className="results-aside">{poll.status === 'closed' ? <>{decisionStatus === 'ready' ? <DecisionPanel key={poll.id} text={decision} onPublish={onPublishDecision} /> : <section className="aside-card decision-card decision-card--results"><p className="eyebrow">ПОСЛЕ ОПРОСА</p><h2>Решение преподавателя</h2><p className="decision-card__empty" role={decisionStatus === 'loading' ? 'status' : undefined}>{decisionStatus === 'error' ? 'Не удалось загрузить опубликованное решение.' : 'Загружаем решение…'}</p>{decisionStatus === 'error' && <button className="decision-editor__button" type="button" onClick={onRetryDecision}>Повторить</button>}</section>}<AppLink to={`/p/${poll.id}/results`} navigate={navigate} className="results-public-link"><Icon name="eye" size={17} />Публичный вид итогов<Icon name="arrowRight" size={16} /></AppLink></> : <section className="aside-card decision-card decision-card--results"><p className="eyebrow">ПОСЛЕ ОПРОСА</p><h2>Решение преподавателя</h2><p className="decision-card__empty">Решение можно опубликовать после закрытия опроса.</p></section>}<div className="results-aside__hint"><Icon name="info" size={18} /><p>При множественном выборе сумма процентов может быть выше 100%. Округление также влияет на сумму.</p></div></aside></div>
   </div>
 }
@@ -412,7 +414,7 @@ export default function App() {
   else if (activePollId && detail?.id === activePollId && detail.status === 'error') content = <ResourceState title="Не удалось открыть опрос" message={detail.error ?? 'Повторите попытку.'} retry={() => setDetailRefresh(value => value + 1)} navigate={navigate} />
   else if (activePollId && !poll) content = <ResourceState title="Загружаем опрос" message="Получаем актуальные данные с сервера." navigate={navigate} loading />
   else if (poll && parts.length === 3) content = <DetailPage poll={poll} navigate={navigate} decision={decision?.pollId === poll.id ? decision.text : undefined} onPublish={() => void publishPoll(poll)} onRequestClose={() => setClosingPollId(poll.id)} notice={notices[poll.id]} actionBusy={actionBusy} actionError={actionError} />
-  else if (poll && parts.length === 4 && parts[3] === 'results') content = getPollKind(poll) === 'test' ? <ResourceState title="Результаты теста появятся позже" message="Для теста сервер использует отдельный API попыток. Просмотр попыток будет подключён в следующем спринте." navigate={navigate} /> : poll.status === 'draft' ? <ResultsPage poll={poll} navigate={navigate} onPublishDecision={text => publishDecision(poll.id, text)} onRefresh={() => setResultsRefresh(value => value + 1)} refreshing={false} /> : resultsStatus === 'error' ? <ResourceState title="Не удалось загрузить результаты" message={resultsError} retry={() => setResultsRefresh(value => value + 1)} navigate={navigate} /> : resultsStatus !== 'ready' ? <ResourceState title="Загружаем результаты" message="Получаем агрегированные ответы с сервера." navigate={navigate} loading /> : <><ResultsPage poll={poll} results={results ?? undefined} navigate={navigate} decision={decision?.pollId === poll.id ? decision.text : undefined} decisionStatus={decisionStatus} onRetryDecision={() => setDecisionRefresh(value => value + 1)} onPublishDecision={text => publishDecision(poll.id, text)} onRefresh={() => setResultsRefresh(value => value + 1)} refreshing={false} />{decisionError && <p className="session-error" role="alert">Не удалось загрузить решение: {decisionError}</p>}</>
+  else if (poll && parts.length === 4 && parts[3] === 'results') content = getPollKind(poll) === 'test' ? poll.status === 'closed' ? <TestAttempts key={poll.id} poll={poll} navigate={navigate} /> : <ResourceState title="Результаты теста пока недоступны" message="Попытки станут доступны после закрытия теста." navigate={navigate} /> : poll.status === 'draft' ? <ResultsPage poll={poll} navigate={navigate} onPublishDecision={text => publishDecision(poll.id, text)} onRefresh={() => setResultsRefresh(value => value + 1)} refreshing={false} /> : resultsStatus === 'error' ? <ResourceState title="Не удалось загрузить результаты" message={resultsError} retry={() => setResultsRefresh(value => value + 1)} navigate={navigate} /> : resultsStatus !== 'ready' ? <ResourceState title="Загружаем результаты" message="Получаем агрегированные ответы с сервера." navigate={navigate} loading /> : <><ResultsPage poll={poll} results={results ?? undefined} navigate={navigate} decision={decision?.pollId === poll.id ? decision.text : undefined} decisionStatus={decisionStatus} onRetryDecision={() => setDecisionRefresh(value => value + 1)} onPublishDecision={text => publishDecision(poll.id, text)} onRefresh={() => setResultsRefresh(value => value + 1)} refreshing={false} />{decisionError && <p className="session-error" role="alert">Не удалось загрузить решение: {decisionError}</p>}</>
   else if (poll && parts.length === 4 && parts[3] === 'edit') content = poll.status === 'draft' ? <BuilderPage key={poll.id} mode="edit" poll={poll} navigate={navigate} onDirtyChange={onDirtyChange} onSave={form => savePoll(form, poll)} /> : <EditUnavailable poll={poll} navigate={navigate} />
   else content = <NotFound navigate={navigate} />
   return <>
