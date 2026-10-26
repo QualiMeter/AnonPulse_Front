@@ -60,17 +60,17 @@ export const moveQuestion = moveItem
 
 export function validateForm(form: BuilderForm): ValidationErrors {
   const errors: ValidationErrors = {}
-  if (!form.questions.length) errors.questions = 'Добавьте хотя бы один вопрос.'
+  if (!form.questions.length) errors.questions = form.kind === 'test' ? 'Добавьте хотя бы одно задание.' : 'Добавьте хотя бы один вопрос.'
   if (form.kind === 'test') {
     if (form.responseMode !== 'identified') errors.responseMode = 'Для теста требуется именной режим.'
     if (![5, 10, 12, 100].includes(form.testScale ?? 0)) errors.testScale = 'Выберите шкалу оценки.'
   }
   for (const question of form.questions) {
     const prefix = `question:${question.clientId}:`
-    if (!question.text.trim()) errors[`${prefix}text`] = 'Введите текст вопроса.'
+    if (!question.text.trim()) errors[`${prefix}text`] = form.kind === 'test' ? 'Введите текст задания.' : 'Введите текст вопроса.'
     if (question.type === 'text') {
-      if (question.options.length) errors[`${prefix}options`] = 'У текстового вопроса не должно быть вариантов.'
-      if (form.kind === 'test' && question.textPurpose !== 'knowledge') errors[`${prefix}textPurpose`] = 'В тесте текстовый вопрос должен проверять знания.'
+      if (question.options.length) errors[`${prefix}options`] = form.kind === 'test' ? 'У текстового задания не должно быть вариантов.' : 'У текстового вопроса не должно быть вариантов.'
+      if (form.kind === 'test' && question.textPurpose !== 'knowledge') errors[`${prefix}textPurpose`] = 'В тесте текстовое задание должно проверять знания.'
       if (question.textPurpose === 'knowledge') {
         if (!question.knowledgeSettings.expectedAnswer.trim()) errors[`${prefix}expectedAnswer`] = 'Введите эталонный ответ.'
         if (!question.knowledgeSettings.gradingCriteria.trim()) errors[`${prefix}gradingCriteria`] = 'Введите критерии оценивания.'
@@ -84,7 +84,7 @@ export function validateForm(form: BuilderForm): ValidationErrors {
     question.options.forEach((option, index) => {
       const key = `option:${option.clientId}`
       if (!normalized[index]) errors[key] = 'Введите вариант ответа.'
-      else if (normalized.indexOf(normalized[index]) !== index) errors[key] = 'Этот вариант уже есть в вопросе.'
+      else if (normalized.indexOf(normalized[index]) !== index) errors[key] = form.kind === 'test' ? 'Этот вариант уже есть в задании.' : 'Этот вариант уже есть в вопросе.'
     })
     if (form.kind === 'test') {
       const weight = Number(question.weight.replace(',', '.'))

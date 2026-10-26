@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { getPollKind, getQuestionType, getResponseMode, type Decision, type Poll, type PollResults, type PollStatus } from './types/polls'
+import { getPollKind, getQuestionType, type Decision, type Poll, type PollResults, type PollStatus } from './types/polls'
 import { Icon } from './components/Icon'
 import { Brand } from './components/Brand'
 import { AppLink } from './components/AppLink'
@@ -22,7 +22,6 @@ function formatShortDate(value: string) { return shortDateFormatter.format(new D
 function pluralQuestions(count: number) { return `${count} ${count % 10 === 1 && count % 100 !== 11 ? 'вопрос' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'вопроса' : 'вопросов'}` }
 function participantNoun(count: number) { return count % 10 === 1 && count % 100 !== 11 ? 'участник' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'участника' : 'участников' }
 function pollTitle(poll: Poll) { return poll.title?.trim() || poll.questions[0]?.text || 'Опрос без названия' }
-function supportsCurrentVoting(poll: Poll) { return getPollKind(poll) === 'survey' && getResponseMode(poll) === 'anonymous' && poll.questions.every(question => getQuestionType(question) === 'single_choice') }
 function apiMessage(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status === 401) return 'Сессия завершилась. Войдите снова.'
@@ -140,7 +139,6 @@ function Breadcrumbs({ poll, navigate, current }: { poll?: Poll; navigate: (to: 
 
 function DetailPage({ poll, navigate, decision, onPublish, onRequestClose, notice, actionBusy, actionError }: { poll: Poll; navigate: (to: string) => void; decision?: string; onPublish: () => void; onRequestClose: () => void; notice?: string; actionBusy: boolean; actionError?: string }) {
   const hasResults = poll.status !== 'draft' && getPollKind(poll) === 'survey'
-  const canPublish = supportsCurrentVoting(poll)
   const [copyFeedback, setCopyFeedback] = useState('')
   async function copyVotingLink() {
     try {
@@ -153,17 +151,17 @@ function DetailPage({ poll, navigate, decision, onPublish, onRequestClose, notic
   return <div className="page page--detail">
     <Breadcrumbs poll={poll} navigate={navigate} />
     {notice && <p className="demo-action-notice" role="status"><Icon name="check" size={17} />{notice}</p>}
-    <div className="detail-heading"><div><div className="detail-heading__pre"><StatusBadge status={poll.status} /><span className="detail-heading__separator">·</span><span>{getPollKind(poll) === 'test' ? 'Тест' : 'Опрос'}</span><span className="detail-heading__separator">·</span><span>{pluralQuestions(poll.questions.length)}</span></div><h1>{pollTitle(poll)}</h1><p>{poll.status === 'draft' ? 'Опрос сохранён как черновик и ещё не принимает ответы.' : poll.status === 'open' ? canPublish ? 'Опрос опубликован и принимает ответы по прямой ссылке.' : 'Опрос опубликован. Прохождение этого формата появится в следующем спринте.' : 'Опрос завершён. Голосование закрыто.'}</p></div></div>
+    <div className="detail-heading"><div><div className="detail-heading__pre"><StatusBadge status={poll.status} /><span className="detail-heading__separator">·</span><span>{getPollKind(poll) === 'test' ? 'Тест' : 'Опрос'}</span><span className="detail-heading__separator">·</span><span>{pluralQuestions(poll.questions.length)}</span></div><h1>{pollTitle(poll)}</h1><p>{poll.status === 'draft' ? 'Форма сохранена как черновик и ещё не принимает ответы.' : poll.status === 'open' ? 'Форма опубликована и принимает ответы по прямой ссылке.' : 'Форма завершена. Приём ответов закрыт.'}</p></div></div>
     <div className="detail-grid">
       <div className="detail-main"><div className="section-title"><div><p className="eyebrow">СТРУКТУРА ОПРОСА</p><h2>Вопросы и варианты</h2></div><span>{pluralQuestions(poll.questions.length)}</span></div>
         <div className="questions-list">{poll.questions.map((question, index) => <section className="question-card" key={question.id} aria-labelledby={`question-${question.id}`}><div className="question-card__head"><span className="question-number">{String(index + 1).padStart(2, '0')}</span><div><h3 id={`question-${question.id}`}>{question.text}</h3><p>{getQuestionType(question) === 'text' ? 'Текстовый ответ' : getQuestionType(question) === 'multiple_choice' ? 'Несколько вариантов' : 'Один вариант ответа'}{question.textPurpose === 'knowledge' ? ' · проверка знаний' : ''}</p></div></div>{getQuestionType(question) !== 'text' && <div className="question-card__options">{question.options.map(item => <div className="question-option" key={item.id}><span className="option-radio" />{item.text}</div>)}</div>}</section>)}</div>
       </div>
       <aside className="detail-aside"><section className="aside-card action-card"><h2>Действия</h2>{hasResults && <AppLink to={`/app/polls/${poll.id}/results`} navigate={navigate} className="button button--dark action-card__primary"><Icon name="barChart" size={18} />Посмотреть результаты<Icon name="arrowRight" size={18} /></AppLink>}
-        {poll.status === 'draft' && <><AppLink to={`/app/polls/${poll.id}/edit`} navigate={navigate} className="button button--dark action-card__primary"><Icon name="edit" size={17} />Редактировать черновик<Icon name="arrowRight" size={18} /></AppLink>{canPublish ? <div className="future-actions"><button type="button" onClick={onPublish} disabled={actionBusy}><Icon name="check" size={17} />{actionBusy ? 'Публикуем…' : 'Опубликовать'}</button></div> : <p className="action-card__note">Публичное прохождение тестов, именных форм и новых типов вопросов появится в следующем спринте. Пока этот черновик нельзя опубликовать через кабинет.</p>}</>}
-        {poll.status === 'open' && <div className="future-actions">{canPublish && <><AppLink to={`/p/${poll.id}`} navigate={navigate}><Icon name="eye" size={17} />Открыть страницу голосования</AppLink><button type="button" onClick={copyVotingLink}><Icon name="link" size={17} />Скопировать ссылку</button></>}<button type="button" onClick={onRequestClose} disabled={actionBusy}><Icon name="lock" size={17} />Закрыть опрос</button></div>}
+        {poll.status === 'draft' && <><AppLink to={`/app/polls/${poll.id}/edit`} navigate={navigate} className="button button--dark action-card__primary"><Icon name="edit" size={17} />Редактировать черновик<Icon name="arrowRight" size={18} /></AppLink><div className="future-actions"><button type="button" onClick={onPublish} disabled={actionBusy}><Icon name="check" size={17} />{actionBusy ? 'Публикуем…' : 'Опубликовать'}</button></div></>}
+        {poll.status === 'open' && <div className="future-actions"><AppLink to={`/p/${poll.id}`} navigate={navigate}><Icon name="eye" size={17} />Открыть страницу прохождения</AppLink><button type="button" onClick={copyVotingLink}><Icon name="link" size={17} />Скопировать ссылку</button><button type="button" onClick={onRequestClose} disabled={actionBusy}><Icon name="lock" size={17} />Закрыть {getPollKind(poll) === 'test' ? 'тест' : 'опрос'}</button></div>}
         {copyFeedback && <p className="action-card__feedback" role="status">{copyFeedback}</p>}
         {actionError && <p className="action-card__feedback" role="alert">{actionError}</p>}
-        <p className="action-card__note">{poll.status === 'closed' ? 'Этот опрос больше не принимает ответы.' : poll.status === 'open' ? canPublish ? 'Отправьте ссылку студентам. После закрытия новые ответы не принимаются.' : 'Публичная страница пока не принимает ответы этого формата.' : 'После публикации редактирование будет недоступно.'}</p>
+        <p className="action-card__note">{poll.status === 'closed' ? 'Эта форма больше не принимает ответы.' : poll.status === 'open' ? 'Отправьте ссылку студентам. После закрытия новые ответы не принимаются.' : 'После публикации редактирование будет недоступно.'}</p>
       </section>
       <section className="aside-card info-card"><h2>Об опросе</h2><dl><div><dt><Icon name="calendar" size={17} />Создан</dt><dd>{formatDate(poll.createdAt)}</dd></div>{poll.publishedAt && <div><dt><Icon name="check" size={17} />Опубликован</dt><dd>{formatDate(poll.publishedAt)}</dd></div>}{poll.closedAt && <div><dt><Icon name="lock" size={17} />Завершён</dt><dd>{formatDate(poll.closedAt)}</dd></div>}<div><dt><Icon name="layers" size={17} />Вопросов</dt><dd>{poll.questions.length}</dd></div></dl></section>
       {decision && <section className="aside-card decision-card"><p className="eyebrow">ЧТО ИЗМЕНИТСЯ</p><h2>Решение преподавателя</h2><p>{decision}</p></section>}</aside>
@@ -372,7 +370,7 @@ export default function App() {
     return saved.id
   }
   const publishPoll = async (poll: Poll) => {
-    if (poll.status !== 'draft' || actionBusy || !supportsCurrentVoting(poll)) return
+    if (poll.status !== 'draft' || actionBusy) return
     setActionBusy(true); setActionError('')
     try {
       const published = await pollsApi.publish(poll.id)

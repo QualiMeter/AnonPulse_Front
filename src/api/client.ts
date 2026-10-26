@@ -3,6 +3,7 @@ export type ProblemDetails = {
   title?: string
   status?: number
   detail?: string
+  code?: string
   errors?: Record<string, string[]>
 }
 
@@ -31,6 +32,7 @@ function asProblem(value: unknown): ProblemDetails | undefined {
     title: typeof value.title === 'string' ? value.title : undefined,
     status: typeof value.status === 'number' ? value.status : undefined,
     detail: typeof value.detail === 'string' ? value.detail : undefined,
+    code: typeof value.code === 'string' ? value.code : undefined,
     errors,
   }
 }
