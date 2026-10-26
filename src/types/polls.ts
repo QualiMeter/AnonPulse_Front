@@ -77,6 +77,23 @@ export type TestAttempt = {
   isFinal: boolean
   answers: TestAttemptAnswer[]
 }
+export type FeedbackAnalysis = {
+  id: string
+  pollId: string
+  questionId: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  answerCount: number
+  report: {
+    summary: string
+    themes: Array<{ name: string; description: string; category: string; mentionCount: number }>
+    recommendations: Array<{ title: string; description: string; priority: string }>
+    limitations: string[]
+  } | null
+  errorCode: string | null
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+}
 
 export function getPollKind(poll: Pick<Poll, 'kind'> | Pick<PublicPoll, 'kind'>): PollKind { return poll.kind ?? 'survey' }
 export function getResponseMode(poll: Pick<Poll, 'responseMode'> | Pick<PublicPoll, 'responseMode'>): ResponseMode { return poll.responseMode ?? 'anonymous' }

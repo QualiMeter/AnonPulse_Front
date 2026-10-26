@@ -12,6 +12,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number | null,
     readonly problem?: ProblemDetails,
+    readonly retryAfterSeconds?: number,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -35,6 +36,14 @@ function asProblem(value: unknown): ProblemDetails | undefined {
     code: typeof value.code === 'string' ? value.code : undefined,
     errors,
   }
+}
+
+function retryAfterSeconds(value: string | null): number | undefined {
+  if (!value) return undefined
+  const seconds = Number(value)
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds)
+  const date = Date.parse(value)
+  return Number.isNaN(date) ? undefined : Math.max(0, Math.ceil((date - Date.now()) / 1000))
 }
 
 type ApiOptions = Omit<RequestInit, 'body' | 'credentials'> & { body?: unknown; authRequired?: boolean; expectedStatus?: number }
@@ -65,7 +74,7 @@ export async function apiRequest<T>(path: `/api/${string}`, options: ApiOptions 
   if (!response.ok) {
     const problem = asProblem(data)
     if (response.status === 401 && authRequired) window.dispatchEvent(new Event('anonpulse:session-expired'))
-    throw new ApiError(problem?.detail || problem?.title || `Ошибка сервера (${response.status})`, response.status, problem)
+    throw new ApiError(problem?.detail || problem?.title || `Ошибка сервера (${response.status})`, response.status, problem, retryAfterSeconds(response.headers.get('Retry-After')))
   }
 
   if (expectedStatus && response.status !== expectedStatus) throw new ApiError(`Неожиданный ответ сервера (${response.status}).`, response.status)
