@@ -1,6 +1,8 @@
 # AnonPulse — что уже сделано на бэкенде и как подключать фронтенд
 
-**Сверено 14 октября 2026 года** с веткой `main` репозитория [QualiMeter/AnonPulse_Beckend](https://github.com/QualiMeter/AnonPulse_Beckend), commit `281903a931ec0fb542551375a584e8f4aab007d1`. По сообщению разработчика, этот код развёрнут на Railway. Неавторизованный `GET /api/auth/me` проверен через локальный Vite proxy и вернул `401` с ProblemDetails. Успешный вход и наличие тестовой учётной записи проверяются владельцем учётных данных в браузере.
+> **Обновление Sprint A (26 октября 2026):** этот документ ниже фиксирует первоначальную интеграцию анонимного SURVEY с одиночным выбором. Актуальный backend дополнительно поддерживает `kind: survey | test`, `responseMode`, `testScale`, `single_choice` / `multiple_choice` / `text`, настройки knowledge и ключи правильных ответов. Для новых контрактов используйте [frontend-integration-overview](https://github.com/QualiMeter/AnonPulse_Beckend/blob/main/docs/frontend-integration-overview.md), [frontend-test-mode](https://github.com/QualiMeter/AnonPulse_Beckend/blob/main/docs/frontend-test-mode.md), [frontend-open-text-questions](https://github.com/QualiMeter/AnonPulse_Beckend/blob/main/docs/frontend-open-text-questions.md), [frontend-auth-and-multiple-choice](https://github.com/QualiMeter/AnonPulse_Beckend/blob/main/docs/frontend-auth-and-multiple-choice.md) и [frontend-identified-polls](https://github.com/QualiMeter/AnonPulse_Beckend/blob/main/docs/frontend-identified-polls.md). Backend также поддерживает удаление собственного draft с CSRF; UI этого действия в Sprint A нет. Публичный клиент приложения пока поддерживает только старый анонимный SURVEY с одиночным выбором.
+
+**Изначально сверено 14 октября 2026 года** с веткой `main` репозитория [QualiMeter/AnonPulse_Beckend](https://github.com/QualiMeter/AnonPulse_Beckend), commit `281903a931ec0fb542551375a584e8f4aab007d1`. Разделы ниже служат справкой по первоначальной интеграции и не являются исчерпывающим перечнем возможностей актуального backend. Новые контракты и права сверяйте с документами по ссылкам выше и контроллерами. Неавторизованный `GET /api/auth/me` через локальный Vite proxy возвращает `401` с ProblemDetails.
 
 ## 1. Общее устройство
 
@@ -30,7 +32,7 @@
 
 Важно: `admin` и `teacher` — **отдельные роли**, не иерархия. Команда создания администратора в текущем коде выдаёт только `admin`. Если требуется полноценная административная панель со списком всех опросов и созданием опросов, для неё пока **нет полного API**. Новые учётные записи нельзя создавать через публичный endpoint: доступны только отдельные служебные команды первоначального создания пользователей. Наличие конкретного администратора в БД не подтверждено этой проверкой.
 
-## 3. Все существующие маршруты API
+## 3. Маршруты первоначальной интеграции
 
 | Метод | URL | Доступ | Успешный ответ |
 |---|---|---|---|
@@ -41,6 +43,7 @@
 | `GET` | `/api/polls` | `teacher` | `200`, массив **своих** опросов |
 | `GET` | `/api/polls/{id}` | `teacher` | `200`, **свой** опрос |
 | `PUT` | `/api/polls/{id}` | автор-`teacher`, только `draft` | `200`, полностью обновлённый опрос |
+| `DELETE` | `/api/polls/{id}` | автор-`teacher`, только `draft`, с CSRF | удаление черновика; UI в Sprint A не реализован |
 | `POST` | `/api/polls/{id}/publish` | автор-`teacher` или `admin` | `200`, статус `open` |
 | `POST` | `/api/polls/{id}/close` | автор-`teacher` или `admin` | `200`, статус `closed` |
 | `GET` | `/api/public/polls/{id}` | Все | `200`, открытый опрос для голосования + voter cookie |
@@ -178,7 +181,7 @@ GET /api/public/polls/{id}
 
 При успешном GET сервер создаёт (если ещё не создана) cookie `__Host-AnonPulse.Voter`: `HttpOnly`, `Secure`, `SameSite=Strict`, срок по умолчанию 365 дней. Фронтенду не надо генерировать собственный токен, класть его в localStorage или передавать ID пользователя. **Важно сначала выполнить GET, потом POST.**
 
-### Шаг 2: выбрать один вариант в каждом вопросе и отправить все ответы разом
+### Шаг 2: выбрать один вариант в каждом вопросе старого анонимного SURVEY и отправить все ответы разом
 
 ```http
 POST /api/public/polls/{id}/votes

@@ -3,6 +3,8 @@ export type ResultQuestion = {
   text: string
   position: number
   options: Array<{ id: string; text: string; position: number; voteCount: number; percentage: number }>
+  type?: 'single_choice' | 'multiple_choice' | 'text'
+  textAnswerCount?: number
 }
 
 const numberFormatter = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 })
@@ -19,5 +21,5 @@ function ResultBar({ option, rank, isEmpty }: { option: ResultQuestion['options'
 }
 
 export function ResultDistribution({ questions, totalParticipants }: { questions: ResultQuestion[]; totalParticipants: number }) {
-  return <div className="result-questions">{[...questions].sort((a, b) => a.position - b.position).map((question, index) => <section className="result-card" key={question.id} aria-labelledby={`result-question-${question.id}`}><div className="result-card__head"><span>ВОПРОС {String(index + 1).padStart(2, '0')}</span><h3 id={`result-question-${question.id}`}>{question.text}</h3><p>Один вариант ответа · {plural(totalParticipants, 'ответ', 'ответа', 'ответов')}</p></div><div className="result-card__rows">{[...question.options].sort((a, b) => a.position - b.position).map((item, rank) => <ResultBar key={item.id} option={item} rank={rank} isEmpty={totalParticipants === 0} />)}</div></section>)}</div>
+  return <div className="result-questions">{[...questions].sort((a, b) => a.position - b.position).map((question, index) => <section className="result-card" key={question.id} aria-labelledby={`result-question-${question.id}`}><div className="result-card__head"><span>ВОПРОС {String(index + 1).padStart(2, '0')}</span><h3 id={`result-question-${question.id}`}>{question.text}</h3><p>{question.type === 'text' ? 'Текстовый ответ' : question.type === 'multiple_choice' ? 'Несколько вариантов' : 'Один вариант ответа'} · {plural(totalParticipants, 'участник', 'участника', 'участников')}</p></div>{question.type === 'text' ? <div className="result-card__rows"><p>{plural(question.textAnswerCount ?? 0, 'текстовый ответ', 'текстовых ответа', 'текстовых ответов')}</p></div> : <div className="result-card__rows">{[...question.options].sort((a, b) => a.position - b.position).map((item, rank) => <ResultBar key={item.id} option={item} rank={rank} isEmpty={totalParticipants === 0} />)}</div>}</section>)}</div>
 }

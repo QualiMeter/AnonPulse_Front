@@ -1,24 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../components/Icon'
-import type { Poll } from '../../types/polls'
+import type { Poll, PollKind, QuestionType, ResponseMode, TestScale } from '../../types/polls'
 import { ApiError } from '../../api/client'
-import { createForm, mapServerValidation, moveQuestion, newOption, newQuestion, validateForm, type BuilderForm, type BuilderQuestion, type ValidationErrors } from './model'
+import { createForm, mapServerValidation, moveItem, newOption, newQuestion, switchFormKind, validateForm, type BuilderForm, type BuilderQuestion, type ValidationErrors } from './model'
 import './builder.css'
 
-type Props = {
-  mode: 'create' | 'edit'
-  poll?: Poll
-  navigate: (to: string) => void
-  onDirtyChange: (dirty: boolean) => void
-  onSave: (form: BuilderForm) => Promise<string>
+type Props = { mode: 'create' | 'edit'; poll?: Poll; navigate: (to: string) => void; onDirtyChange: (dirty: boolean) => void; onSave: (form: BuilderForm) => Promise<string> }
+const questionTypes: Array<{ value: QuestionType; label: string }> = [
+  { value: 'single_choice', label: 'Один вариант' }, { value: 'multiple_choice', label: 'Несколько вариантов' }, { value: 'text', label: 'Текстовый ответ' },
+]
+const labelForQuestion = (question: BuilderQuestion, index: number) => question.text.trim() || `Вопрос ${index + 1}`
+const typeLabel = (type: QuestionType) => questionTypes.find(item => item.value === type)?.label ?? 'Один вариант'
+type PreviewForm = Pick<BuilderForm, 'title' | 'kind' | 'responseMode'> & { questions: Array<Pick<BuilderQuestion, 'clientId' | 'text' | 'type' | 'options'>> }
+function toPreviewForm(form: BuilderForm): PreviewForm {
+  return { title: form.title, kind: form.kind, responseMode: form.responseMode, questions: form.questions.map(({ clientId, text, type, options }) => ({ clientId, text, type, options })) }
 }
 
-function questionLabel(question: BuilderQuestion, index: number) {
-  return question.text.trim() || `Вопрос ${index + 1}`
-}
-
-function Preview({ form, onClose }: { form: BuilderForm; onClose: () => void }) {
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+function Preview({ form, onClose }: { form: PreviewForm; onClose: () => void }) {
+  const [answers, setAnswers] = useState<Record<string, string[]>>({})
   const closeRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -28,29 +27,22 @@ function Preview({ form, onClose }: { form: BuilderForm; onClose: () => void }) 
     closeRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
-      if (event.key === 'Tab') {
-        const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')
-        if (!focusable?.length) return
-        if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable[focusable.length - 1].focus() }
-        else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus() }
-      }
+      if (event.key !== 'Tab') return
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled])')
+      if (!focusable?.length) return
+      if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable[focusable.length - 1].focus() }
+      else if (!event.shiftKey && document.activeElement === focusable[focusable.length - 1]) { event.preventDefault(); focusable[0].focus() }
     }
     document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.body.style.overflow = previousOverflow
-      document.removeEventListener('keydown', onKeyDown)
-      previousFocus?.focus()
-    }
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', onKeyDown); previousFocus?.focus() }
   }, [onClose])
-
-  return <div className="builder-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <section ref={dialogRef} className="builder-preview" role="dialog" aria-modal="true" aria-labelledby="builder-preview-title">
-      <div className="builder-preview__top"><div><span className="builder-preview__tag"><Icon name="eye" size={15} />ПРЕДПРОСМОТР</span><h2 id="builder-preview-title">Так опрос увидит студент</h2></div><button ref={closeRef} className="icon-button" type="button" onClick={onClose} aria-label="Закрыть предпросмотр"><Icon name="close" size={19} /></button></div>
-      <div className="builder-preview__body"><div className="builder-preview__intro"><p className="eyebrow">АНОНИМНЫЙ ОПРОС</p><h3>{form.title.trim() || form.questions[0]?.text.trim() || 'Опрос без названия'}</h3><p>Выберите один ответ в каждом вопросе. Это только предпросмотр: ответы не отправляются.</p></div>
-        {form.questions.length === 0 ? <div className="builder-preview__empty">Добавьте вопрос, чтобы увидеть форму опроса.</div> : form.questions.map((question, index) => <fieldset className="builder-preview__question" key={question.clientId}><legend><span>{String(index + 1).padStart(2, '0')}</span>{question.text.trim() || 'Текст вопроса пока не заполнен'}</legend><div className="builder-preview__options">{question.options.map((option, optionIndex) => <label key={option.clientId} className={`builder-preview__option ${answers[question.clientId] === option.clientId ? 'builder-preview__option--selected' : ''}`}><input type="radio" name={`preview-${question.clientId}`} checked={answers[question.clientId] === option.clientId} onChange={() => setAnswers(current => ({ ...current, [question.clientId]: option.clientId }))} /><span>{option.text.trim() || `Вариант ${optionIndex + 1}`}</span></label>)}</div></fieldset>)}
-      </div><div className="builder-preview__bottom"><span>Только визуальный просмотр · без сохранения</span><button className="button button--dark" type="button" onClick={onClose}>Вернуться к редактированию</button></div>
-    </section>
-  </div>
+  return <div className="builder-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section ref={dialogRef} className="builder-preview" role="dialog" aria-modal="true" aria-labelledby="builder-preview-title">
+    <div className="builder-preview__top"><div><span className="builder-preview__tag"><Icon name="eye" size={15} />ПРЕДПРОСМОТР</span><h2 id="builder-preview-title">Так форму увидит участник</h2></div><button ref={closeRef} className="icon-button" type="button" onClick={onClose} aria-label="Закрыть предпросмотр"><Icon name="close" size={19} /></button></div>
+    <div className="builder-preview__body"><div className="builder-preview__intro"><p className="eyebrow">{form.kind === 'test' ? 'ТЕСТ · ПРОВЕРКА ЗНАНИЙ' : 'ОПРОС · ОБРАТНАЯ СВЯЗЬ'}</p><h3>{form.title.trim() || form.questions[0]?.text.trim() || 'Опрос без названия'}</h3><p>Только визуальный просмотр. Ответы не отправляются.</p></div>
+      {form.responseMode === 'identified' && <div className="builder-preview__identity"><label>Имя участника<input className="builder-input" placeholder="Как к вам обращаться" /></label>{form.kind === 'test' && <label>Группа<input className="builder-input" placeholder="Например, ИВТ-101" /></label>}</div>}
+      {form.questions.length === 0 ? <div className="builder-preview__empty">Добавьте вопрос, чтобы увидеть форму.</div> : form.questions.map((question, index) => <fieldset className="builder-preview__question" key={question.clientId}><legend><span>{String(index + 1).padStart(2, '0')}</span>{question.text.trim() || 'Текст вопроса пока не заполнен'}</legend><div className="builder-preview__options">{question.type === 'text' ? <textarea className="builder-input builder-preview__textarea" placeholder="Ваш ответ" /> : question.options.map(option => { const selected = answers[question.clientId] ?? []; return <label key={option.clientId} className={`builder-preview__option ${selected.includes(option.clientId) ? 'builder-preview__option--selected' : ''}`}><input type={question.type === 'multiple_choice' ? 'checkbox' : 'radio'} name={`preview-${question.clientId}`} checked={selected.includes(option.clientId)} onChange={() => setAnswers(current => ({ ...current, [question.clientId]: question.type === 'single_choice' ? [option.clientId] : selected.includes(option.clientId) ? selected.filter(id => id !== option.clientId) : [...selected, option.clientId] }))} /><span>{option.text.trim() || 'Вариант ответа'}</span></label> })}</div></fieldset>)}
+    </div><div className="builder-preview__bottom"><span>Ключи ответов и критерии не показываются участнику</span><button className="button button--dark" type="button" onClick={onClose}>Вернуться к редактированию</button></div>
+  </section></div>
 }
 
 export default function BuilderPage({ mode, poll, navigate, onDirtyChange, onSave }: Props) {
@@ -63,124 +55,113 @@ export default function BuilderPage({ mode, poll, navigate, onDirtyChange, onSav
   const [previewOpen, setPreviewOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [activeQuestion, setActiveQuestion] = useState<string | null>(form.questions[0]?.clientId ?? null)
+  const [pendingChange, setPendingChange] = useState<{ message: string; apply: () => void } | null>(null)
+  const changeDialogRef = useRef<HTMLElement>(null)
   const validation = useMemo(() => validateForm(form), [form])
   const errors = showErrors ? { ...validation, ...serverErrors } : serverErrors
   const dirty = JSON.stringify(form) !== initialSnapshot.current
   const errorCount = Object.keys(validation).length
+  const newPublicUnsupported = form.kind === 'test' || form.responseMode === 'identified' || form.questions.some(question => question.type !== 'single_choice')
+  const legacyKnowledgeCount = form.kind === 'survey' ? form.questions.filter(question => question.type === 'text' && question.textPurpose === 'knowledge').length : 0
 
+  useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false) }, [dirty, onDirtyChange])
   useEffect(() => { setServerErrors({}); setSaveError('') }, [form])
-
-  useEffect(() => {
-    onDirtyChange(dirty)
-    return () => onDirtyChange(false)
-  }, [dirty, onDirtyChange])
-
   useEffect(() => {
     if (!dirty) return
     const beforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
     window.addEventListener('beforeunload', beforeUnload)
     return () => window.removeEventListener('beforeunload', beforeUnload)
   }, [dirty])
+  useEffect(() => {
+    if (!pendingChange) return
+    const previousFocus = document.activeElement as HTMLElement | null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    changeDialogRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPendingChange(null)
+      if (event.key !== 'Tab') return
+      const buttons = changeDialogRef.current?.querySelectorAll<HTMLButtonElement>('button')
+      if (!buttons?.length) return
+      if (event.shiftKey && document.activeElement === buttons[0]) { event.preventDefault(); buttons[buttons.length - 1].focus() }
+      else if (!event.shiftKey && document.activeElement === buttons[buttons.length - 1]) { event.preventDefault(); buttons[0].focus() }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', onKeyDown); previousFocus?.focus() }
+  }, [pendingChange])
 
   function updateQuestion(id: string, update: (question: BuilderQuestion) => BuilderQuestion) {
     setForm(current => ({ ...current, questions: current.questions.map(question => question.clientId === id ? update(question) : question) }))
   }
-
-  function addQuestion() {
-    const question = newQuestion()
+  function addQuestion(type: QuestionType = 'single_choice') {
+    const question = newQuestion(type, form.kind)
     setForm(current => ({ ...current, questions: [...current.questions, question] }))
     setActiveQuestion(question.clientId)
-    requestAnimationFrame(() => {
-      document.getElementById(`builder-question-${question.clientId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      document.getElementById(`builder-text-${question.clientId}`)?.focus({ preventScroll: true })
-    })
+    requestAnimationFrame(() => { document.getElementById(`builder-question-${question.clientId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); document.getElementById(`builder-text-${question.clientId}`)?.focus({ preventScroll: true }) })
   }
-
-  function removeQuestion(id: string) {
-    setForm(current => ({ ...current, questions: current.questions.filter(question => question.clientId !== id) }))
-    setCollapsed(current => { const next = new Set(current); next.delete(id); return next })
-    if (activeQuestion === id) setActiveQuestion(null)
+  function changeKind(kind: PollKind) {
+    if (kind === form.kind) return
+    const apply = () => setForm(current => switchFormKind(current, kind))
+    if (kind === 'survey' && form.questions.some(question => question.weight || question.correctOptionClientIds.length || question.type === 'text' && (question.textPurpose === 'knowledge' || Object.values(question.knowledgeSettings).some(Boolean)))) setPendingChange({ message: 'При переходе в «Опрос» правильные ответы, веса, эталоны и критерии не войдут в сохраняемую форму. Заполненные настройки останутся в редакторе до сохранения, и вы сможете вернуться к «Тесту». Продолжить?', apply })
+    else if (kind === 'test' && form.questions.some(question => question.type === 'text' && question.textPurpose === 'feedback')) setPendingChange({ message: 'В «Тесте» текстовые вопросы проверяют знания. Для каждого потребуется эталон и критерии оценивания. Уже введённые тексты вопросов останутся.', apply })
+    else apply()
   }
-
-  function addOption(questionId: string) {
-    const option = newOption()
-    updateQuestion(questionId, question => ({ ...question, options: [...question.options, option] }))
-    setCollapsed(current => { const next = new Set(current); next.delete(questionId); return next })
-    requestAnimationFrame(() => document.getElementById(`builder-option-${option.clientId}`)?.focus())
+  function changeQuestionType(question: BuilderQuestion, type: QuestionType) {
+    if (type === question.type) return
+    const apply = () => updateQuestion(question.clientId, current => ({ ...current, type, textPurpose: type === 'text' ? form.kind === 'test' ? 'knowledge' : 'feedback' : current.textPurpose, options: type === 'text' ? [] : current.options.length >= 2 ? current.options : [newOption(), newOption()], correctOptionClientIds: type === 'text' ? [] : type === 'single_choice' ? current.correctOptionClientIds.slice(0, 1) : current.correctOptionClientIds }))
+    if (type === 'text' && question.options.some(option => option.text.trim())) setPendingChange({ message: 'При выборе текстового ответа варианты и отмеченные правильные ответы этого вопроса будут удалены.', apply })
+    else if (question.type === 'text' && question.textPurpose === 'knowledge' && (question.knowledgeSettings.expectedAnswer || question.knowledgeSettings.gradingCriteria || question.knowledgeSettings.maxScore)) setPendingChange({ message: 'Настройки эталона и критериев останутся в форме, но не будут сохранены для вопроса с вариантами.', apply })
+    else if (type === 'single_choice' && question.correctOptionClientIds.length > 1) setPendingChange({ message: 'Для одиночного выбора останется только первый отмеченный правильный вариант.', apply })
+    else apply()
   }
-
-  function scrollToQuestion(id: string) {
-    setCollapsed(current => { const next = new Set(current); next.delete(id); return next })
-    setActiveQuestion(id)
-    requestAnimationFrame(() => document.getElementById(`builder-question-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-
+  function scrollToQuestion(id: string) { setCollapsed(current => { const next = new Set(current); next.delete(id); return next }); setActiveQuestion(id); requestAnimationFrame(() => document.getElementById(`builder-question-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })) }
   function checkForm() {
     setShowErrors(true)
-    if (errorCount > 0) {
-      const firstInvalid = form.questions.find(question => validation[`question:${question.clientId}:text`] || validation[`question:${question.clientId}:options`] || question.options.some(option => validation[`option:${option.clientId}`]))
-      if (firstInvalid) setCollapsed(current => { const next = new Set(current); next.delete(firstInvalid.clientId); return next })
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        const target = firstInvalid
-          ? document.querySelector<HTMLElement>(`#builder-question-${firstInvalid.clientId} [aria-invalid="true"]`)
-          : document.getElementById('builder-add-first')
-        target?.focus()
-        target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }))
+    const firstQuestionError = Object.keys(validation).find(key => key.startsWith('question:') || key.startsWith('option:'))
+    if (firstQuestionError) {
+      const question = form.questions.find(item => firstQuestionError.startsWith(`question:${item.clientId}:`) || item.options.some(option => firstQuestionError === `option:${option.clientId}`))
+      if (question) setCollapsed(current => { const next = new Set(current); next.delete(question.clientId); return next })
     }
+    if (errorCount) requestAnimationFrame(() => requestAnimationFrame(() => { const target = document.querySelector<HTMLElement>('.builder-page [aria-invalid="true"]') ?? document.getElementById('builder-add-first'); target?.focus(); target?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }))
     return errorCount === 0
   }
-
   async function save() {
-    if (saving) return
-    if (!checkForm()) return
-    setSaving(true)
-    setSaveError('')
-    setServerErrors({})
-    try {
-      const id = await onSave(form)
-      onDirtyChange(false)
-      navigate(`/app/polls/${id}`)
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setServerErrors(mapServerValidation(form, error.problem?.errors))
-        setSaveError(error.status === 400 ? 'Сервер отклонил данные. Проверьте отмеченные поля.' : error.status === 403 ? 'Нет доступа к этому опросу.' : error.status === 404 ? 'Черновик не найден. Возможно, он был удалён.' : error.status === 409 ? 'Этот опрос больше нельзя редактировать. Обновите страницу.' : error.status === null ? error.message : 'Не удалось сохранить опрос. Попробуйте ещё раз.')
-      } else setSaveError(error instanceof Error ? error.message : 'Не удалось сохранить опрос.')
+    if (saving || !checkForm()) return
+    setSaving(true); setSaveError(''); setServerErrors({})
+    try { const id = await onSave(form); onDirtyChange(false); navigate(`/app/polls/${id}`) }
+    catch (error) {
+      if (error instanceof ApiError) { setServerErrors(mapServerValidation(form, error.problem?.errors)); setSaveError(error.status === 400 ? 'Сервер отклонил данные. Проверьте отмеченные поля.' : error.status === 403 ? 'Нет доступа к этому опросу.' : error.status === 404 ? 'Черновик не найден.' : error.status === 409 ? 'Этот опрос больше нельзя редактировать. Обновите страницу.' : error.status === null ? error.message : 'Не удалось сохранить опрос. Попробуйте ещё раз.') }
+      else setSaveError(error instanceof Error ? error.message : 'Не удалось сохранить опрос.')
     } finally { setSaving(false) }
   }
 
   return <div className="page builder-page">
     <nav className="breadcrumbs" aria-label="Путь к странице"><button className="breadcrumb-button" type="button" onClick={() => navigate('/app/polls')}>Опросы</button><Icon name="chevronRight" size={15} />{mode === 'edit' && poll && <><button className="breadcrumb-button breadcrumb-button--truncate" type="button" onClick={() => navigate(`/app/polls/${poll.id}`)}>{poll.title || poll.questions[0]?.text || 'Опрос без названия'}</button><Icon name="chevronRight" size={15} /></>}<span aria-current="page">{mode === 'create' ? 'Новый опрос' : 'Редактирование'}</span></nav>
-    <div className="builder-heading"><div><p className="eyebrow">{mode === 'create' ? 'НОВЫЙ ОПРОС' : 'РЕДАКТИРОВАНИЕ ЧЕРНОВИКА'}</p><h1>{mode === 'create' ? 'Создать опрос' : 'Изменить черновик'}</h1><p>{mode === 'create' ? 'Соберите вопросы и варианты ответа. Студент сможет выбрать один вариант в каждом вопросе.' : 'Название, вопросы и варианты будут полностью заменены после сохранения на сервере.'}</p></div><button className="button button--preview" type="button" onClick={() => setPreviewOpen(true)}><Icon name="eye" size={17} />Предпросмотр</button></div>
-
-    <div className="builder-grid">
-      <div className="builder-main">
-        <section className="builder-intro" aria-labelledby="builder-title-heading"><div className="builder-card-heading"><span className="builder-card-heading__icon"><Icon name="edit" size={18} /></span><div><h2 id="builder-title-heading">Основная информация</h2><p>Название помогает найти опрос в кабинете</p></div></div><label className="builder-label" htmlFor="builder-title">Название опроса <span>необязательно</span></label><input className="builder-input builder-input--title" id="builder-title" value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} placeholder="Например, обратная связь по лекции" /><p className="builder-help">Если оставить поле пустым, в списке будет показан первый вопрос.</p></section>
-
-        <div className="builder-section-heading"><div><p className="eyebrow">СОДЕРЖАНИЕ</p><h2>Вопросы <span>{form.questions.length}</span></h2></div><button type="button" className="builder-add-inline" onClick={addQuestion}><Icon name="plus" size={17} />Добавить вопрос</button></div>
-        {errors.questions && <p className="builder-error builder-error--global" role="alert"><Icon name="alert" size={16} />{errors.questions}</p>}
-        {form.questions.length === 0 && <div className="builder-empty"><span className="builder-empty__icon"><Icon name="layers" size={24} /></span><h3>Пока нет вопросов</h3><p>Добавьте первый вопрос и минимум два варианта ответа.</p><button id="builder-add-first" type="button" className="button button--dark" onClick={addQuestion}><Icon name="plus" size={17} />Добавить вопрос</button></div>}
-        <div className="builder-questions">{form.questions.map((question, index) => {
-          const isCollapsed = collapsed.has(question.clientId)
-          const textError = errors[`question:${question.clientId}:text`]
-          const optionsError = errors[`question:${question.clientId}:options`]
-          return <section className={`builder-question ${activeQuestion === question.clientId ? 'builder-question--active' : ''}`} id={`builder-question-${question.clientId}`} key={question.clientId} aria-labelledby={`builder-question-heading-${question.clientId}`} onFocus={() => setActiveQuestion(question.clientId)}>
-            <div className="builder-question__top"><span className="builder-question__number">{String(index + 1).padStart(2, '0')}</span><div className="builder-question__heading"><h3 id={`builder-question-heading-${question.clientId}`}>{questionLabel(question, index)}</h3><p>Один вариант ответа</p></div><div className="builder-question__controls"><button type="button" className="icon-button" onClick={() => setForm(current => ({ ...current, questions: moveQuestion(current.questions, index, index - 1) }))} disabled={index === 0} aria-label={`Поднять вопрос ${index + 1} выше`} title="Поднять выше"><Icon name="up" size={18} /></button><button type="button" className="icon-button" onClick={() => setForm(current => ({ ...current, questions: moveQuestion(current.questions, index, index + 1) }))} disabled={index === form.questions.length - 1} aria-label={`Опустить вопрос ${index + 1} ниже`} title="Опустить ниже"><Icon name="down" size={18} /></button><button type="button" className="icon-button icon-button--danger" onClick={() => removeQuestion(question.clientId)} aria-label={`Удалить вопрос ${index + 1}`} title="Удалить вопрос"><Icon name="trash" size={17} /></button><span className="builder-control-divider" /><button type="button" className="icon-button" onClick={() => setCollapsed(current => { const next = new Set(current); if (next.has(question.clientId)) next.delete(question.clientId); else next.add(question.clientId); return next })} aria-expanded={!isCollapsed} aria-controls={`builder-question-body-${question.clientId}`} aria-label={`${isCollapsed ? 'Развернуть' : 'Свернуть'} вопрос ${index + 1}`}><Icon name={isCollapsed ? 'down' : 'up'} size={19} /></button></div></div>
-            {!isCollapsed && <div className="builder-question__body" id={`builder-question-body-${question.clientId}`}><label className="builder-label" htmlFor={`builder-text-${question.clientId}`}>Текст вопроса <span className="builder-label__required">*</span></label><input className={`builder-input ${textError ? 'builder-input--error' : ''}`} id={`builder-text-${question.clientId}`} value={question.text} onChange={event => updateQuestion(question.clientId, current => ({ ...current, text: event.target.value }))} placeholder="О чём вы хотите спросить?" aria-invalid={Boolean(textError)} aria-describedby={textError ? `builder-text-error-${question.clientId}` : undefined} />{textError && <p className="builder-error" id={`builder-text-error-${question.clientId}`} role="alert">{textError}</p>}
-              <div className="builder-options-heading"><span className="builder-label">Варианты ответа</span><span>Минимум 2 · один выбор</span></div>{optionsError && <p className="builder-error" role="alert">{optionsError}</p>}
-              <div className="builder-options">{question.options.map((option, optionIndex) => { const optionError = errors[`option:${option.clientId}`]; return <div className="builder-option-row" key={option.clientId}><span className="builder-option-row__radio" aria-hidden="true" /><div className="builder-option-row__field"><input className={`builder-input ${optionError ? 'builder-input--error' : ''}`} id={`builder-option-${option.clientId}`} value={option.text} onChange={event => updateQuestion(question.clientId, current => ({ ...current, options: current.options.map(item => item.clientId === option.clientId ? { ...item, text: event.target.value } : item) }))} placeholder={`Вариант ${optionIndex + 1}`} aria-label={`Вариант ${optionIndex + 1} вопроса ${index + 1}`} aria-invalid={Boolean(optionError)} aria-describedby={optionError ? `builder-option-error-${option.clientId}` : undefined} />{optionError && <p className="builder-error" id={`builder-option-error-${option.clientId}`} role="alert">{optionError}</p>}</div><button className="icon-button icon-button--danger" type="button" onClick={() => updateQuestion(question.clientId, current => ({ ...current, options: current.options.filter(item => item.clientId !== option.clientId) }))} disabled={question.options.length <= 2} title={question.options.length <= 2 ? 'Нужно минимум два варианта' : 'Удалить вариант'} aria-label={`Удалить вариант ${optionIndex + 1} вопроса ${index + 1}`}><Icon name="close" size={17} /></button></div> })}</div><button className="builder-add-option" type="button" onClick={() => addOption(question.clientId)}><Icon name="plus" size={17} />Добавить вариант</button>
-            </div>}
-          </section>
-        })}</div>
-        {form.questions.length > 0 && <button className="builder-add-question" type="button" onClick={addQuestion}><Icon name="plus" size={20} /><span>Добавить ещё вопрос</span></button>}
-      </div>
-
-      <aside className="builder-aside" aria-label="Структура опроса"><div className="builder-outline"><div className="builder-outline__header"><div><p className="eyebrow">НАВИГАЦИЯ</p><h2>Структура опроса</h2></div><span>{form.questions.length}</span></div><div className="builder-outline__items">{form.questions.length === 0 ? <p className="builder-outline__empty">Вопросы появятся здесь</p> : form.questions.map((question, index) => <button key={question.clientId} type="button" className={`builder-outline__item ${activeQuestion === question.clientId ? 'builder-outline__item--active' : ''}`} onClick={() => scrollToQuestion(question.clientId)}><span>{String(index + 1).padStart(2, '0')}</span><span>{questionLabel(question, index)}</span></button>)}</div><div className="builder-outline__footer"><Icon name="info" size={17} /><p>Порядок вопросов можно менять стрелками на карточках.</p></div></div><div className="builder-aside__note"><Icon name="lock" size={18} /><p>После публикации редактирование недоступно.</p></div></aside>
-    </div>
-
+    <div className="builder-heading"><div><p className="eyebrow">{mode === 'create' ? 'НОВЫЙ ОПРОС' : 'РЕДАКТИРОВАНИЕ ЧЕРНОВИКА'}</p><h1>{mode === 'create' ? 'Создать опрос' : 'Изменить черновик'}</h1><p>Соберите вопросы, проверьте форму глазами участника и сохраните черновик.</p></div><button className="button button--preview" type="button" onClick={() => setPreviewOpen(true)}><Icon name="eye" size={17} />Предпросмотр</button></div>
+    <div className="builder-grid"><div className="builder-main"><section className="builder-intro" aria-labelledby="builder-title-heading"><div className="builder-card-heading"><span className="builder-card-heading__icon"><Icon name="edit" size={18} /></span><div><h2 id="builder-title-heading">Основная информация</h2><p>Режим и название будущей формы</p></div></div>
+      <label className="builder-label" htmlFor="builder-title">Название опроса <span>необязательно</span></label><input className={`builder-input builder-input--title ${errors.title ? 'builder-input--error' : ''}`} id="builder-title" value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} placeholder="Например, обратная связь по занятию" aria-invalid={Boolean(errors.title)} />{errors.title && <p className="builder-error" role="alert">{errors.title}</p>}<p className="builder-help">Если оставить поле пустым, в списке будет показан первый вопрос.</p>
+      <div className="builder-config"><div><span className="builder-label">Формат</span><div className="builder-choice-group" role="group" aria-label="Формат опроса"><button type="button" className={form.kind === 'survey' ? 'builder-choice builder-choice--active' : 'builder-choice'} aria-pressed={form.kind === 'survey'} onClick={() => changeKind('survey')}><strong>Опрос</strong><span>Обратная связь</span></button><button type="button" className={form.kind === 'test' ? 'builder-choice builder-choice--active' : 'builder-choice'} aria-pressed={form.kind === 'test'} onClick={() => changeKind('test')}><strong>Тест</strong><span>Проверка знаний</span></button></div>{errors.kind && <p className="builder-error" role="alert">{errors.kind}</p>}</div>
+      {form.kind === 'survey' ? <div><label className="builder-label" htmlFor="builder-response-mode">Участие</label><select id="builder-response-mode" className="builder-input" value={form.responseMode} onChange={event => setForm(current => ({ ...current, responseMode: event.target.value as ResponseMode }))}><option value="anonymous">Анонимное</option><option value="identified">С именем участника</option></select><p className="builder-help">{form.responseMode === 'identified' ? 'Участник сам укажет отображаемое имя. Его личность не подтверждается.' : 'Для участия не нужен аккаунт или имя.'}</p>{errors.responseMode && <p className="builder-error" role="alert">{errors.responseMode}</p>}</div> : <><div className="builder-config__note"><Icon name="info" size={17} /><span>Тест всегда именной: участник вводит имя и группу. Закрытые вопросы оцениваются сервером автоматически.</span></div><div><label className="builder-label" htmlFor="builder-test-scale">Шкала оценки <span className="builder-label__required">*</span></label><select id="builder-test-scale" className={`builder-input ${errors.testScale ? 'builder-input--error' : ''}`} value={form.testScale ?? ''} onChange={event => setForm(current => ({ ...current, testScale: Number(event.target.value) as TestScale }))} aria-invalid={Boolean(errors.testScale)}><option value="">Выберите шкалу</option>{[5, 10, 12, 100].map(value => <option key={value} value={value}>{value} баллов</option>)}</select>{errors.testScale && <p className="builder-error" role="alert">{errors.testScale}</p>}</div></>}
+      </div>{legacyKnowledgeCount > 0 && <div className="builder-config__note builder-config__note--warning" role="status"><Icon name="info" size={17} /><span>В старом черновике остались текстовые вопросы с настройками проверки знаний. При сохранении они сохранятся без потери данных. Новые текстовые вопросы опроса будут только для обратной связи.</span></div>}{newPublicUnsupported && <div className="builder-config__note builder-config__note--warning"><Icon name="info" size={17} /><span>Форма сохранится как черновик. Публичное прохождение этого режима появится в следующем спринте, поэтому публикация в кабинете пока недоступна.</span></div>}
+    </section>
+    <div className="builder-section-heading"><div><p className="eyebrow">СОДЕРЖАНИЕ</p><h2>Вопросы <span>{form.questions.length}</span></h2></div><button type="button" className="builder-add-inline" onClick={() => addQuestion()}><Icon name="plus" size={17} />Добавить вопрос</button></div>
+    {errors.questions && <p className="builder-error builder-error--global" role="alert"><Icon name="alert" size={16} />{errors.questions}</p>}
+    {form.questions.length === 0 && <div className="builder-empty"><span className="builder-empty__icon"><Icon name="layers" size={24} /></span><h3>Пока нет вопросов</h3><p>Добавьте первый вопрос.</p><button id="builder-add-first" type="button" className="button button--dark" onClick={() => addQuestion()}><Icon name="plus" size={17} />Добавить вопрос</button></div>}
+    <div className="builder-questions">{form.questions.map((question, index) => {
+      const prefix = `question:${question.clientId}:`
+      const isCollapsed = collapsed.has(question.clientId)
+      const questionError = errors[`${prefix}text`]
+      const optionsError = errors[`${prefix}options`]
+      const settingError = (name: string) => errors[`${prefix}${name}`]
+      return <section className={`builder-question ${activeQuestion === question.clientId ? 'builder-question--active' : ''}`} id={`builder-question-${question.clientId}`} key={question.clientId} aria-labelledby={`builder-question-heading-${question.clientId}`} onFocus={() => setActiveQuestion(question.clientId)}><div className="builder-question__top"><span className="builder-question__number">{String(index + 1).padStart(2, '0')}</span><div className="builder-question__heading"><h3 id={`builder-question-heading-${question.clientId}`}>{labelForQuestion(question, index)}</h3><p>{typeLabel(question.type)}</p></div><div className="builder-question__controls"><button type="button" className="icon-button" onClick={() => setForm(current => ({ ...current, questions: moveItem(current.questions, index, index - 1) }))} disabled={index === 0} aria-label={`Поднять вопрос ${index + 1} выше`} title="Поднять выше"><Icon name="up" size={18} /></button><button type="button" className="icon-button" onClick={() => setForm(current => ({ ...current, questions: moveItem(current.questions, index, index + 1) }))} disabled={index === form.questions.length - 1} aria-label={`Опустить вопрос ${index + 1} ниже`} title="Опустить ниже"><Icon name="down" size={18} /></button><button type="button" className="icon-button icon-button--danger" onClick={() => setForm(current => ({ ...current, questions: current.questions.filter(item => item.clientId !== question.clientId) }))} aria-label={`Удалить вопрос ${index + 1}`} title="Удалить вопрос"><Icon name="trash" size={17} /></button><span className="builder-control-divider" /><button type="button" className="icon-button" onClick={() => setCollapsed(current => { const next = new Set(current); if (next.has(question.clientId)) next.delete(question.clientId); else next.add(question.clientId); return next })} aria-expanded={!isCollapsed} aria-controls={`builder-question-body-${question.clientId}`} aria-label={`${isCollapsed ? 'Развернуть' : 'Свернуть'} вопрос ${index + 1}`}><Icon name={isCollapsed ? 'down' : 'up'} size={19} /></button></div></div>
+        {!isCollapsed && <div className="builder-question__body" id={`builder-question-body-${question.clientId}`}><div className="builder-field-pair"><div><label className="builder-label" htmlFor={`builder-text-${question.clientId}`}>Текст вопроса <span className="builder-label__required">*</span></label><input className={`builder-input ${questionError ? 'builder-input--error' : ''}`} id={`builder-text-${question.clientId}`} value={question.text} onChange={event => updateQuestion(question.clientId, current => ({ ...current, text: event.target.value }))} placeholder="О чём вы хотите спросить?" aria-invalid={Boolean(questionError)} />{questionError && <p className="builder-error" role="alert">{questionError}</p>}</div><div><label className="builder-label" htmlFor={`builder-type-${question.clientId}`}>Тип ответа</label><select id={`builder-type-${question.clientId}`} className="builder-input" value={question.type} onChange={event => changeQuestionType(question, event.target.value as QuestionType)}>{questionTypes.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}</select>{settingError('type') && <p className="builder-error" role="alert">{settingError('type')}</p>}</div></div>
+          {question.type === 'text' ? <div className="builder-settings">{form.kind === 'test' && <><div><label className="builder-label" htmlFor={`builder-expected-${question.clientId}`}>Эталонный ответ <span className="builder-label__required">*</span></label><textarea id={`builder-expected-${question.clientId}`} className={`builder-input builder-textarea ${settingError('expectedAnswer') ? 'builder-input--error' : ''}`} value={question.knowledgeSettings.expectedAnswer} onChange={event => updateQuestion(question.clientId, current => ({ ...current, knowledgeSettings: { ...current.knowledgeSettings, expectedAnswer: event.target.value } }))} aria-invalid={Boolean(settingError('expectedAnswer'))} />{settingError('expectedAnswer') && <p className="builder-error" role="alert">{settingError('expectedAnswer')}</p>}</div><div><label className="builder-label" htmlFor={`builder-criteria-${question.clientId}`}>Критерии оценивания <span className="builder-label__required">*</span></label><textarea id={`builder-criteria-${question.clientId}`} className={`builder-input builder-textarea ${settingError('gradingCriteria') ? 'builder-input--error' : ''}`} value={question.knowledgeSettings.gradingCriteria} onChange={event => updateQuestion(question.clientId, current => ({ ...current, knowledgeSettings: { ...current.knowledgeSettings, gradingCriteria: event.target.value } }))} aria-invalid={Boolean(settingError('gradingCriteria'))} />{settingError('gradingCriteria') && <p className="builder-error" role="alert">{settingError('gradingCriteria')}</p>}</div><div><label className="builder-label" htmlFor={`builder-score-${question.clientId}`}>Максимальный балл <span className="builder-label__required">*</span></label><input id={`builder-score-${question.clientId}`} className={`builder-input ${settingError('maxScore') ? 'builder-input--error' : ''}`} type="number" min="1" max="100" step="1" value={question.knowledgeSettings.maxScore} onChange={event => updateQuestion(question.clientId, current => ({ ...current, knowledgeSettings: { ...current.knowledgeSettings, maxScore: event.target.value } }))} aria-invalid={Boolean(settingError('maxScore'))} />{settingError('maxScore') && <p className="builder-error" role="alert">{settingError('maxScore')}</p>}</div><p className="builder-help">Эти настройки видны только преподавателю. Автоматическая проверка текста пока недоступна.</p></>}</div> : <><div className="builder-options-heading"><span className="builder-label">Варианты ответа</span><span>Минимум 2 · без повторов</span></div>{optionsError && <p className="builder-error" role="alert">{optionsError}</p>}<div className="builder-options">{question.options.map((option, optionIndex) => { const optionError = errors[`option:${option.clientId}`]; const correct = question.correctOptionClientIds.includes(option.clientId); return <div className="builder-option-row builder-option-row--extended" key={option.clientId}><span className={`builder-option-row__radio ${question.type === 'multiple_choice' ? 'builder-option-row__radio--square' : ''}`} aria-hidden="true" /><div className="builder-option-row__field"><input className={`builder-input ${optionError ? 'builder-input--error' : ''}`} id={`builder-option-${option.clientId}`} value={option.text} onChange={event => updateQuestion(question.clientId, current => ({ ...current, options: current.options.map(item => item.clientId === option.clientId ? { ...item, text: event.target.value } : item) }))} placeholder={`Вариант ${optionIndex + 1}`} aria-label={`Вариант ${optionIndex + 1} вопроса ${index + 1}`} aria-invalid={Boolean(optionError)} />{optionError && <p className="builder-error" role="alert">{optionError}</p>}{form.kind === 'test' && <label className="builder-correct"><input type={question.type === 'single_choice' ? 'radio' : 'checkbox'} name={`correct-${question.clientId}`} aria-label={`Правильный ответ: вариант ${optionIndex + 1} вопроса ${index + 1}`} checked={correct} onChange={() => updateQuestion(question.clientId, current => ({ ...current, correctOptionClientIds: current.type === 'single_choice' ? [option.clientId] : correct ? current.correctOptionClientIds.filter(id => id !== option.clientId) : [...current.correctOptionClientIds, option.clientId] }))} />Правильный ответ</label>}</div><div className="builder-option-row__controls"><button className="icon-button" type="button" onClick={() => updateQuestion(question.clientId, current => ({ ...current, options: moveItem(current.options, optionIndex, optionIndex - 1) }))} disabled={optionIndex === 0} aria-label={`Поднять вариант ${optionIndex + 1} вопроса ${index + 1}`}><Icon name="up" size={16} /></button><button className="icon-button" type="button" onClick={() => updateQuestion(question.clientId, current => ({ ...current, options: moveItem(current.options, optionIndex, optionIndex + 1) }))} disabled={optionIndex === question.options.length - 1} aria-label={`Опустить вариант ${optionIndex + 1} вопроса ${index + 1}`}><Icon name="down" size={16} /></button><button className="icon-button icon-button--danger" type="button" onClick={() => updateQuestion(question.clientId, current => ({ ...current, options: current.options.filter(item => item.clientId !== option.clientId), correctOptionClientIds: current.correctOptionClientIds.filter(id => id !== option.clientId) }))} disabled={question.options.length <= 2} aria-label={`Удалить вариант ${optionIndex + 1} вопроса ${index + 1}`}><Icon name="close" size={17} /></button></div></div> })}</div><button className="builder-add-option" type="button" onClick={() => { const option = newOption(); updateQuestion(question.clientId, current => ({ ...current, options: [...current.options, option] })); requestAnimationFrame(() => document.getElementById(`builder-option-${option.clientId}`)?.focus()) }}><Icon name="plus" size={17} />Добавить вариант</button>{form.kind === 'test' && <div className="builder-settings"><div><label className="builder-label" htmlFor={`builder-weight-${question.clientId}`}>Вес вопроса <span className="builder-label__required">*</span></label><input id={`builder-weight-${question.clientId}`} className={`builder-input ${settingError('weight') ? 'builder-input--error' : ''}`} type="number" min="0.01" max="10000" step="0.01" value={question.weight} onChange={event => updateQuestion(question.clientId, current => ({ ...current, weight: event.target.value }))} aria-invalid={Boolean(settingError('weight'))} />{settingError('weight') && <p className="builder-error" role="alert">{settingError('weight')}</p>}</div>{settingError('correctOptionIndexes') && <p className="builder-error" role="alert">{settingError('correctOptionIndexes')}</p>}</div>}</>}
+        </div>}</section>
+    })}</div>{form.questions.length > 0 && <button className="builder-add-question" type="button" onClick={() => addQuestion()}><Icon name="plus" size={20} /><span>Добавить ещё вопрос</span></button>}
+    </div><aside className="builder-aside" aria-label="Структура опроса"><div className="builder-outline"><div className="builder-outline__header"><div><p className="eyebrow">НАВИГАЦИЯ</p><h2>Структура опроса</h2></div><span>{form.questions.length}</span></div><div className="builder-outline__items">{form.questions.length === 0 ? <p className="builder-outline__empty">Вопросы появятся здесь</p> : form.questions.map((question, index) => <button key={question.clientId} type="button" className={`builder-outline__item ${activeQuestion === question.clientId ? 'builder-outline__item--active' : ''}`} onClick={() => scrollToQuestion(question.clientId)}><span>{String(index + 1).padStart(2, '0')}</span><span>{labelForQuestion(question, index)}</span></button>)}</div><div className="builder-outline__footer"><Icon name="info" size={17} /><p>Порядок вопросов и вариантов можно менять стрелками.</p></div></div><div className="builder-aside__note"><Icon name="lock" size={18} /><p>После публикации редактирование недоступно.</p></div></aside></div>
     <div className="builder-footer"><div className="builder-footer__state"><span className={`builder-footer__dot ${dirty ? 'builder-footer__dot--dirty' : ''}`} /><div><strong>{dirty ? 'Есть несохранённые изменения' : mode === 'edit' ? 'Черновик открыт для редактирования' : 'Новый опрос'}</strong><span>Сохранение на сервере после проверки формы</span></div></div><div className="builder-footer__actions"><button type="button" className="button button--check" onClick={checkForm}><Icon name="check" size={17} />Проверить форму</button><button type="button" className="button button--primary" onClick={() => void save()} disabled={saving}><Icon name="check" size={16} />{saving ? 'Сохраняем…' : 'Сохранить опрос'}</button></div></div>
-    {saveError && <div className="builder-validation builder-validation--error" role="alert"><Icon name="alert" size={18} /><span>{saveError}</span></div>}
-    {showErrors && <div className={`builder-validation ${errorCount ? 'builder-validation--error' : 'builder-validation--success'}`} role="status"><Icon name={errorCount ? 'alert' : 'check'} size={18} /><span>{errorCount ? `Найдены ошибки: ${errorCount}. Исправьте отмеченные поля.` : 'Форма заполнена корректно. Можно сохранить её.'}</span></div>}
-    {previewOpen && <Preview form={form} onClose={() => setPreviewOpen(false)} />}
+    {saveError && <div className="builder-validation builder-validation--error" role="alert"><Icon name="alert" size={18} /><span>{saveError}</span></div>}{showErrors && <div className={`builder-validation ${errorCount ? 'builder-validation--error' : 'builder-validation--success'}`} role="status"><Icon name={errorCount ? 'alert' : 'check'} size={18} /><span>{errorCount ? `Найдены ошибки: ${errorCount}. Исправьте отмеченные поля.` : 'Форма заполнена корректно. Можно сохранить её.'}</span></div>}
+    {previewOpen && <Preview form={toPreviewForm(form)} onClose={() => setPreviewOpen(false)} />}
+    {pendingChange && <div className="builder-modal-backdrop"><section ref={changeDialogRef} className="leave-dialog" role="alertdialog" aria-modal="true" aria-labelledby="builder-change-title"><span className="leave-dialog__icon"><Icon name="alert" size={22} /></span><h2 id="builder-change-title">Изменить конфигурацию?</h2><p>{pendingChange.message}</p><div><button type="button" className="button button--check" onClick={() => setPendingChange(null)}>Оставить как есть</button><button type="button" className="button button--danger" onClick={() => { pendingChange.apply(); setPendingChange(null) }}>Продолжить</button></div></section></div>}
   </div>
 }

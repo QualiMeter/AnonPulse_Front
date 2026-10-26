@@ -3,11 +3,11 @@ import { pollsApi } from '../../api/polls'
 import { ApiError } from '../../api/client'
 import { Icon, type IconName } from '../../components/Icon'
 import { AppLink } from '../../components/AppLink'
-import type { PublicPoll } from '../../types/polls'
+import { getPollKind, getQuestionType, getResponseMode, type PublicPoll } from '../../types/polls'
 import { PublicFrame } from './PublicFrame'
 import './publicVoting.css'
 
-type LoadState = 'loading' | 'ready' | 'closed' | 'unavailable' | 'missing' | 'error'
+type LoadState = 'loading' | 'ready' | 'unsupported' | 'closed' | 'unavailable' | 'missing' | 'error'
 type VoteStage = 'form' | 'sending' | 'success' | 'send-error'
 
 function StatePanel({ icon, eyebrow, title, children, action }: { icon: IconName; eyebrow: string; title: string; children: React.ReactNode; action?: React.ReactNode }) {
@@ -35,7 +35,10 @@ export default function PublicVotingPage({ id, navigate }: { id: string; navigat
   useEffect(() => {
     const controller = new AbortController()
     setLoad('loading')
-    pollsApi.publicPoll(id, controller.signal).then(value => { setPoll(value); setLoad('ready') }).catch(async error => {
+    pollsApi.publicPoll(id, controller.signal).then(value => {
+      setPoll(value)
+      setLoad(getPollKind(value) === 'test' || getResponseMode(value) !== 'anonymous' || value.questions.some(question => getQuestionType(question) !== 'single_choice') ? 'unsupported' : 'ready')
+    }).catch(async error => {
       if (controller.signal.aborted) return
       if (error instanceof ApiError && error.status === 409) {
         try {
@@ -74,6 +77,7 @@ export default function PublicVotingPage({ id, navigate }: { id: string; navigat
   if (load === 'loading') return <PublicFrame id={id} compact><LoadingState /></PublicFrame>
   if (load !== 'ready' || !poll) {
     const closed = load === 'closed'
+    if (load === 'unsupported') return <PublicFrame id={id} compact><StatePanel icon="info" eyebrow="НОВЫЙ ФОРМАТ" title="Прохождение появится позже"><p>Эта форма использует новый режим участия или тип вопроса. Поддержка публичного прохождения появится в следующем обновлении AnonPulse. Ответы здесь пока не отправляются.</p></StatePanel></PublicFrame>
     return <PublicFrame id={id} compact><StatePanel icon={closed ? 'lock' : load === 'missing' ? 'search' : 'alert'} eyebrow={closed ? 'ГОЛОСОВАНИЕ ЗАВЕРШЕНО' : load === 'missing' ? 'ССЫЛКА НЕ НАЙДЕНА' : 'ОПРОС НЕДОСТУПЕН'} title={closed ? 'Опрос закрыт' : load === 'missing' ? 'Опрос не найден' : load === 'error' ? 'Не удалось открыть опрос' : 'Голосование сейчас недоступно'} action={closed ? <AppLink to={`/p/${id}/results`} navigate={navigate} className="vote-button vote-button--primary">Посмотреть итоги <Icon name="arrowRight" size={18} /></AppLink> : load === 'error' ? <button type="button" className="vote-button vote-button--primary" onClick={() => setLoadAttempt(value => value + 1)}>Повторить</button> : undefined}><p>{closed ? 'Приём ответов завершён. Теперь доступны итоговые результаты.' : load === 'missing' ? 'Проверьте адрес ссылки или попросите преподавателя отправить её снова.' : load === 'error' ? 'Проверьте соединение и попробуйте ещё раз.' : 'Опрос может быть ещё не опубликован или уже недоступен. Проверить его состояние по этой ссылке пока нельзя.'}</p></StatePanel></PublicFrame>
   }
   if (questions.length === 0) return <PublicFrame id={id} compact><StatePanel icon="layers" eyebrow="НЕТ ВОПРОСОВ" title="Опрос пуст"><p>Сообщите преподавателю, что в опросе нет вопросов.</p></StatePanel></PublicFrame>

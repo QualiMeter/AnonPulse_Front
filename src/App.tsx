@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { Decision, Poll, PollResults, PollStatus } from './types/polls'
+import { getPollKind, getQuestionType, getResponseMode, type Decision, type Poll, type PollResults, type PollStatus } from './types/polls'
 import { Icon } from './components/Icon'
 import { Brand } from './components/Brand'
 import { AppLink } from './components/AppLink'
 import { ResultDistribution } from './components/ResultDistribution'
-import type { BuilderForm } from './features/pollBuilder/model'
+import { toPollDraft, type BuilderForm } from './features/pollBuilder/model'
 import BuilderPage from './features/pollBuilder/BuilderPage'
 import PublicVotingPage from './features/publicVoting/PublicVotingPage'
 import PublicResultsPage from './features/publicVoting/PublicResultsPage'
@@ -12,7 +12,7 @@ import DecisionPanel from './features/decisions/DecisionPanel'
 import LoginPage from './features/auth/LoginPage'
 import { authApi, type CurrentUser } from './api/auth'
 import { ApiError } from './api/client'
-import { pollsApi, type PollDraft } from './api/polls'
+import { pollsApi } from './api/polls'
 
 const dateFormatter = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 const shortDateFormatter = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -22,6 +22,7 @@ function formatShortDate(value: string) { return shortDateFormatter.format(new D
 function pluralQuestions(count: number) { return `${count} ${count % 10 === 1 && count % 100 !== 11 ? 'вопрос' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'вопроса' : 'вопросов'}` }
 function participantNoun(count: number) { return count % 10 === 1 && count % 100 !== 11 ? 'участник' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'участника' : 'участников' }
 function pollTitle(poll: Poll) { return poll.title?.trim() || poll.questions[0]?.text || 'Опрос без названия' }
+function supportsCurrentVoting(poll: Poll) { return getPollKind(poll) === 'survey' && getResponseMode(poll) === 'anonymous' && poll.questions.every(question => getQuestionType(question) === 'single_choice') }
 function apiMessage(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status === 401) return 'Сессия завершилась. Войдите снова.'
@@ -123,7 +124,7 @@ function Dashboard({ polls, navigate }: { polls: Poll[]; navigate: (to: string) 
       {visiblePolls.length > 0 ? <div className="poll-list">
         <div className="poll-list__head"><span>ОПРОС</span><span>СТАТУС</span><span>СОЗДАН</span><span /></div>
         {visiblePolls.map(poll => <div className="poll-row" key={poll.id}>
-          <div className="poll-row__name"><span className="poll-row__glyph"><Icon name="layers" size={18} /></span><div><AppLink to={`/app/polls/${poll.id}`} navigate={navigate} className="poll-row__title">{pollTitle(poll)}</AppLink><span className="poll-row__meta">{pluralQuestions(poll.questions.length)}{!poll.title && <span className="poll-row__fallback"> · без названия</span>}</span></div></div>
+          <div className="poll-row__name"><span className="poll-row__glyph"><Icon name="layers" size={18} /></span><div><AppLink to={`/app/polls/${poll.id}`} navigate={navigate} className="poll-row__title">{pollTitle(poll)}</AppLink><span className="poll-row__meta">{getPollKind(poll) === 'test' ? 'Тест' : 'Опрос'} · {pluralQuestions(poll.questions.length)}{!poll.title && <span className="poll-row__fallback"> · без названия</span>}</span></div></div>
           <div className="poll-row__status"><StatusBadge status={poll.status} /></div>
           <div className="poll-row__date">{formatShortDate(poll.createdAt)}</div>
           <div className="poll-row__action"><AppLink to={`/app/polls/${poll.id}`} navigate={navigate} className="row-arrow" ariaLabel={`Открыть опрос «${pollTitle(poll)}»`}><Icon name="arrowRight" size={19} /></AppLink></div>
@@ -138,7 +139,8 @@ function Breadcrumbs({ poll, navigate, current }: { poll?: Poll; navigate: (to: 
 }
 
 function DetailPage({ poll, navigate, decision, onPublish, onRequestClose, notice, actionBusy, actionError }: { poll: Poll; navigate: (to: string) => void; decision?: string; onPublish: () => void; onRequestClose: () => void; notice?: string; actionBusy: boolean; actionError?: string }) {
-  const hasResults = poll.status !== 'draft'
+  const hasResults = poll.status !== 'draft' && getPollKind(poll) === 'survey'
+  const canPublish = supportsCurrentVoting(poll)
   const [copyFeedback, setCopyFeedback] = useState('')
   async function copyVotingLink() {
     try {
@@ -151,17 +153,17 @@ function DetailPage({ poll, navigate, decision, onPublish, onRequestClose, notic
   return <div className="page page--detail">
     <Breadcrumbs poll={poll} navigate={navigate} />
     {notice && <p className="demo-action-notice" role="status"><Icon name="check" size={17} />{notice}</p>}
-    <div className="detail-heading"><div><div className="detail-heading__pre"><StatusBadge status={poll.status} /><span className="detail-heading__separator">·</span><span>{pluralQuestions(poll.questions.length)}</span></div><h1>{pollTitle(poll)}</h1><p>{poll.status === 'draft' ? 'Опрос сохранён как черновик и ещё не принимает ответы.' : poll.status === 'open' ? 'Опрос опубликован и принимает ответы по прямой ссылке.' : 'Опрос завершён. Голосование закрыто, результаты доступны для просмотра.'}</p></div></div>
+    <div className="detail-heading"><div><div className="detail-heading__pre"><StatusBadge status={poll.status} /><span className="detail-heading__separator">·</span><span>{getPollKind(poll) === 'test' ? 'Тест' : 'Опрос'}</span><span className="detail-heading__separator">·</span><span>{pluralQuestions(poll.questions.length)}</span></div><h1>{pollTitle(poll)}</h1><p>{poll.status === 'draft' ? 'Опрос сохранён как черновик и ещё не принимает ответы.' : poll.status === 'open' ? canPublish ? 'Опрос опубликован и принимает ответы по прямой ссылке.' : 'Опрос опубликован. Прохождение этого формата появится в следующем спринте.' : 'Опрос завершён. Голосование закрыто.'}</p></div></div>
     <div className="detail-grid">
       <div className="detail-main"><div className="section-title"><div><p className="eyebrow">СТРУКТУРА ОПРОСА</p><h2>Вопросы и варианты</h2></div><span>{pluralQuestions(poll.questions.length)}</span></div>
-        <div className="questions-list">{poll.questions.map((question, index) => <section className="question-card" key={question.id} aria-labelledby={`question-${question.id}`}><div className="question-card__head"><span className="question-number">{String(index + 1).padStart(2, '0')}</span><div><h3 id={`question-${question.id}`}>{question.text}</h3><p>Один вариант ответа</p></div></div><div className="question-card__options">{question.options.map(item => <div className="question-option" key={item.id}><span className="option-radio" />{item.text}</div>)}</div></section>)}</div>
+        <div className="questions-list">{poll.questions.map((question, index) => <section className="question-card" key={question.id} aria-labelledby={`question-${question.id}`}><div className="question-card__head"><span className="question-number">{String(index + 1).padStart(2, '0')}</span><div><h3 id={`question-${question.id}`}>{question.text}</h3><p>{getQuestionType(question) === 'text' ? 'Текстовый ответ' : getQuestionType(question) === 'multiple_choice' ? 'Несколько вариантов' : 'Один вариант ответа'}{question.textPurpose === 'knowledge' ? ' · проверка знаний' : ''}</p></div></div>{getQuestionType(question) !== 'text' && <div className="question-card__options">{question.options.map(item => <div className="question-option" key={item.id}><span className="option-radio" />{item.text}</div>)}</div>}</section>)}</div>
       </div>
       <aside className="detail-aside"><section className="aside-card action-card"><h2>Действия</h2>{hasResults && <AppLink to={`/app/polls/${poll.id}/results`} navigate={navigate} className="button button--dark action-card__primary"><Icon name="barChart" size={18} />Посмотреть результаты<Icon name="arrowRight" size={18} /></AppLink>}
-        {poll.status === 'draft' && <><AppLink to={`/app/polls/${poll.id}/edit`} navigate={navigate} className="button button--dark action-card__primary"><Icon name="edit" size={17} />Редактировать черновик<Icon name="arrowRight" size={18} /></AppLink><div className="future-actions"><button type="button" onClick={onPublish} disabled={actionBusy}><Icon name="check" size={17} />{actionBusy ? 'Публикуем…' : 'Опубликовать'}</button></div></>}
-        {poll.status === 'open' && <div className="future-actions"><AppLink to={`/p/${poll.id}`} navigate={navigate}><Icon name="eye" size={17} />Открыть страницу голосования</AppLink><button type="button" onClick={copyVotingLink}><Icon name="link" size={17} />Скопировать ссылку</button><button type="button" onClick={onRequestClose} disabled={actionBusy}><Icon name="lock" size={17} />Закрыть опрос</button></div>}
+        {poll.status === 'draft' && <><AppLink to={`/app/polls/${poll.id}/edit`} navigate={navigate} className="button button--dark action-card__primary"><Icon name="edit" size={17} />Редактировать черновик<Icon name="arrowRight" size={18} /></AppLink>{canPublish ? <div className="future-actions"><button type="button" onClick={onPublish} disabled={actionBusy}><Icon name="check" size={17} />{actionBusy ? 'Публикуем…' : 'Опубликовать'}</button></div> : <p className="action-card__note">Публичное прохождение тестов, именных форм и новых типов вопросов появится в следующем спринте. Пока этот черновик нельзя опубликовать через кабинет.</p>}</>}
+        {poll.status === 'open' && <div className="future-actions">{canPublish && <><AppLink to={`/p/${poll.id}`} navigate={navigate}><Icon name="eye" size={17} />Открыть страницу голосования</AppLink><button type="button" onClick={copyVotingLink}><Icon name="link" size={17} />Скопировать ссылку</button></>}<button type="button" onClick={onRequestClose} disabled={actionBusy}><Icon name="lock" size={17} />Закрыть опрос</button></div>}
         {copyFeedback && <p className="action-card__feedback" role="status">{copyFeedback}</p>}
         {actionError && <p className="action-card__feedback" role="alert">{actionError}</p>}
-        <p className="action-card__note">{poll.status === 'closed' ? 'Этот опрос больше не принимает ответы.' : poll.status === 'open' ? 'Отправьте ссылку студентам. После закрытия новые ответы не принимаются.' : 'После публикации редактирование будет недоступно.'}</p>
+        <p className="action-card__note">{poll.status === 'closed' ? 'Этот опрос больше не принимает ответы.' : poll.status === 'open' ? canPublish ? 'Отправьте ссылку студентам. После закрытия новые ответы не принимаются.' : 'Публичная страница пока не принимает ответы этого формата.' : 'После публикации редактирование будет недоступно.'}</p>
       </section>
       <section className="aside-card info-card"><h2>Об опросе</h2><dl><div><dt><Icon name="calendar" size={17} />Создан</dt><dd>{formatDate(poll.createdAt)}</dd></div>{poll.publishedAt && <div><dt><Icon name="check" size={17} />Опубликован</dt><dd>{formatDate(poll.publishedAt)}</dd></div>}{poll.closedAt && <div><dt><Icon name="lock" size={17} />Завершён</dt><dd>{formatDate(poll.closedAt)}</dd></div>}<div><dt><Icon name="layers" size={17} />Вопросов</dt><dd>{poll.questions.length}</dd></div></dl></section>
       {decision && <section className="aside-card decision-card"><p className="eyebrow">ЧТО ИЗМЕНИТСЯ</p><h2>Решение преподавателя</h2><p>{decision}</p></section>}</aside>
@@ -179,7 +181,7 @@ function ResultsPage({ poll, results, navigate, decision, decisionStatus, onRetr
     <div className="results-layout"><div className="results-main"><div className="section-title"><div><p className="eyebrow">РАСПРЕДЕЛЕНИЕ ОТВЕТОВ</p><h2>По каждому вопросу</h2></div></div>
       {results.totalParticipants === 0 && <div className="zero-results"><Icon name="barChart" size={20} /><span>Ответов пока нет. Распределение появится после первого участия.</span></div>}
       <ResultDistribution questions={results.questions} totalParticipants={results.totalParticipants} />
-    </div><aside className="results-aside">{poll.status === 'closed' ? <>{decisionStatus === 'ready' ? <DecisionPanel key={poll.id} text={decision} onPublish={onPublishDecision} /> : <section className="aside-card decision-card decision-card--results"><p className="eyebrow">ПОСЛЕ ОПРОСА</p><h2>Решение преподавателя</h2><p className="decision-card__empty" role={decisionStatus === 'loading' ? 'status' : undefined}>{decisionStatus === 'error' ? 'Не удалось загрузить опубликованное решение.' : 'Загружаем решение…'}</p>{decisionStatus === 'error' && <button className="decision-editor__button" type="button" onClick={onRetryDecision}>Повторить</button>}</section>}<AppLink to={`/p/${poll.id}/results`} navigate={navigate} className="results-public-link"><Icon name="eye" size={17} />Публичный вид итогов<Icon name="arrowRight" size={16} /></AppLink></> : <section className="aside-card decision-card decision-card--results"><p className="eyebrow">ПОСЛЕ ОПРОСА</p><h2>Решение преподавателя</h2><p className="decision-card__empty">Решение можно опубликовать после закрытия опроса.</p></section>}<div className="results-aside__hint"><Icon name="info" size={18} /><p>Проценты рассчитаны отдельно для каждого вопроса и могут не складываться ровно в 100% из-за округления.</p></div></aside></div>
+    </div><aside className="results-aside">{poll.status === 'closed' ? <>{decisionStatus === 'ready' ? <DecisionPanel key={poll.id} text={decision} onPublish={onPublishDecision} /> : <section className="aside-card decision-card decision-card--results"><p className="eyebrow">ПОСЛЕ ОПРОСА</p><h2>Решение преподавателя</h2><p className="decision-card__empty" role={decisionStatus === 'loading' ? 'status' : undefined}>{decisionStatus === 'error' ? 'Не удалось загрузить опубликованное решение.' : 'Загружаем решение…'}</p>{decisionStatus === 'error' && <button className="decision-editor__button" type="button" onClick={onRetryDecision}>Повторить</button>}</section>}<AppLink to={`/p/${poll.id}/results`} navigate={navigate} className="results-public-link"><Icon name="eye" size={17} />Публичный вид итогов<Icon name="arrowRight" size={16} /></AppLink></> : <section className="aside-card decision-card decision-card--results"><p className="eyebrow">ПОСЛЕ ОПРОСА</p><h2>Решение преподавателя</h2><p className="decision-card__empty">Решение можно опубликовать после закрытия опроса.</p></section>}<div className="results-aside__hint"><Icon name="info" size={18} /><p>При множественном выборе сумма процентов может быть выше 100%. Округление также влияет на сумму.</p></div></aside></div>
   </div>
 }
 
@@ -193,16 +195,6 @@ function EditUnavailable({ poll, navigate }: { poll: Poll; navigate: (to: string
 
 function ResourceState({ title, message, retry, navigate, loading = false }: { title: string; message: string; retry?: () => void; navigate: (to: string) => void; loading?: boolean }) {
   return <div className="page"><div className="state-panel" role={loading ? 'status' : undefined}><div className="state-panel__icon"><Icon name={loading ? 'layers' : 'alert'} size={24} /></div><h1>{title}</h1><p>{message}</p><div className="resource-actions">{retry && <button type="button" className="button button--dark" onClick={retry}>Повторить</button>}<AppLink to="/app/polls" navigate={navigate} className="button button--check">К списку опросов</AppLink></div></div></div>
-}
-
-function draftFromForm(form: BuilderForm): PollDraft {
-  return {
-    title: form.title.trim() || null,
-    questions: form.questions.map(question => ({
-      text: question.text.trim(),
-      options: question.options.map(option => option.text.trim()),
-    })),
-  }
 }
 
 export default function App() {
@@ -282,7 +274,7 @@ export default function App() {
     return () => controller.abort()
   }, [auth.status, activePollId, detailRefresh, path])
   useEffect(() => {
-    if (auth.status !== 'authenticated' || !activePollId || !resultsRoute || detail?.id !== activePollId || detail.poll?.status === 'draft' || detail.status !== 'ready') return
+    if (auth.status !== 'authenticated' || !activePollId || !resultsRoute || detail?.id !== activePollId || !detail.poll || detail.poll.status === 'draft' || detail.status !== 'ready' || getPollKind(detail.poll) === 'test') return
     const controller = new AbortController()
     setResults(null)
     setResultsStatus('loading')
@@ -294,7 +286,7 @@ export default function App() {
     return () => controller.abort()
   }, [auth.status, activePollId, resultsRoute, detail?.id, detail?.status, detail?.poll?.status, resultsRefresh])
   useEffect(() => {
-    if (auth.status !== 'authenticated' || !activePollId || detail?.id !== activePollId || detail.poll?.status !== 'closed' || detail.status !== 'ready') return
+    if (auth.status !== 'authenticated' || !activePollId || detail?.id !== activePollId || detail.poll?.status !== 'closed' || detail.status !== 'ready' || getPollKind(detail.poll) === 'test') return
     const controller = new AbortController()
     setDecision(null)
     setDecisionError('')
@@ -371,15 +363,16 @@ export default function App() {
     return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', onKeyDown); previousFocus?.focus() }
   }, [closingPollId])
   const savePoll = async (form: BuilderForm, existing?: Poll) => {
-    const body = draftFromForm(form)
-    const saved = existing ? await pollsApi.update(existing.id, body) : await pollsApi.create(body)
+    const body = toPollDraft(form)
+    const response = existing ? await pollsApi.update(existing.id, body) : await pollsApi.create(body)
+    const saved = existing ? await pollsApi.detail(response.id) : response
     setPolls(current => current.some(item => item.id === saved.id) ? current.map(item => item.id === saved.id ? saved : item) : [saved, ...current])
     setDetail({ id: saved.id, status: 'ready', poll: saved })
     setNotices(current => ({ ...current, [saved.id]: existing ? 'Черновик обновлён на сервере.' : 'Опрос создан на сервере как черновик.' }))
     return saved.id
   }
   const publishPoll = async (poll: Poll) => {
-    if (poll.status !== 'draft' || actionBusy) return
+    if (poll.status !== 'draft' || actionBusy || !supportsCurrentVoting(poll)) return
     setActionBusy(true); setActionError('')
     try {
       const published = await pollsApi.publish(poll.id)
@@ -421,7 +414,7 @@ export default function App() {
   else if (activePollId && detail?.id === activePollId && detail.status === 'error') content = <ResourceState title="Не удалось открыть опрос" message={detail.error ?? 'Повторите попытку.'} retry={() => setDetailRefresh(value => value + 1)} navigate={navigate} />
   else if (activePollId && !poll) content = <ResourceState title="Загружаем опрос" message="Получаем актуальные данные с сервера." navigate={navigate} loading />
   else if (poll && parts.length === 3) content = <DetailPage poll={poll} navigate={navigate} decision={decision?.pollId === poll.id ? decision.text : undefined} onPublish={() => void publishPoll(poll)} onRequestClose={() => setClosingPollId(poll.id)} notice={notices[poll.id]} actionBusy={actionBusy} actionError={actionError} />
-  else if (poll && parts.length === 4 && parts[3] === 'results') content = poll.status === 'draft' ? <ResultsPage poll={poll} navigate={navigate} onPublishDecision={text => publishDecision(poll.id, text)} onRefresh={() => setResultsRefresh(value => value + 1)} refreshing={false} /> : resultsStatus === 'error' ? <ResourceState title="Не удалось загрузить результаты" message={resultsError} retry={() => setResultsRefresh(value => value + 1)} navigate={navigate} /> : resultsStatus !== 'ready' ? <ResourceState title="Загружаем результаты" message="Получаем агрегированные ответы с сервера." navigate={navigate} loading /> : <><ResultsPage poll={poll} results={results ?? undefined} navigate={navigate} decision={decision?.pollId === poll.id ? decision.text : undefined} decisionStatus={decisionStatus} onRetryDecision={() => setDecisionRefresh(value => value + 1)} onPublishDecision={text => publishDecision(poll.id, text)} onRefresh={() => setResultsRefresh(value => value + 1)} refreshing={false} />{decisionError && <p className="session-error" role="alert">Не удалось загрузить решение: {decisionError}</p>}</>
+  else if (poll && parts.length === 4 && parts[3] === 'results') content = getPollKind(poll) === 'test' ? <ResourceState title="Результаты теста появятся позже" message="Для теста сервер использует отдельный API попыток. Просмотр попыток будет подключён в следующем спринте." navigate={navigate} /> : poll.status === 'draft' ? <ResultsPage poll={poll} navigate={navigate} onPublishDecision={text => publishDecision(poll.id, text)} onRefresh={() => setResultsRefresh(value => value + 1)} refreshing={false} /> : resultsStatus === 'error' ? <ResourceState title="Не удалось загрузить результаты" message={resultsError} retry={() => setResultsRefresh(value => value + 1)} navigate={navigate} /> : resultsStatus !== 'ready' ? <ResourceState title="Загружаем результаты" message="Получаем агрегированные ответы с сервера." navigate={navigate} loading /> : <><ResultsPage poll={poll} results={results ?? undefined} navigate={navigate} decision={decision?.pollId === poll.id ? decision.text : undefined} decisionStatus={decisionStatus} onRetryDecision={() => setDecisionRefresh(value => value + 1)} onPublishDecision={text => publishDecision(poll.id, text)} onRefresh={() => setResultsRefresh(value => value + 1)} refreshing={false} />{decisionError && <p className="session-error" role="alert">Не удалось загрузить решение: {decisionError}</p>}</>
   else if (poll && parts.length === 4 && parts[3] === 'edit') content = poll.status === 'draft' ? <BuilderPage key={poll.id} mode="edit" poll={poll} navigate={navigate} onDirtyChange={onDirtyChange} onSave={form => savePoll(form, poll)} /> : <EditUnavailable poll={poll} navigate={navigate} />
   else content = <NotFound navigate={navigate} />
   return <>

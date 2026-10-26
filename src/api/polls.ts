@@ -1,10 +1,6 @@
 import { apiRequest } from './client'
-import type { Decision, Poll, PollResults, PublicPoll } from '../types/polls'
-
-export type PollDraft = {
-  title: string | null
-  questions: Array<{ text: string; options: string[] }>
-}
+import type { Decision, Poll, PollDraft, PollResults, PublicPoll } from '../types/polls'
+export type { PollDraft } from '../types/polls'
 
 export type VoteAnswer = { questionId: string; optionId: string }
 
