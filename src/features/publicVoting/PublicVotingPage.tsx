@@ -3,14 +3,16 @@ import { pollsApi, type PublicAnswer, type TestSubmissionReceipt } from '../../a
 import { ApiError } from '../../api/client'
 import { Icon, type IconName } from '../../components/Icon'
 import { AppLink } from '../../components/AppLink'
-import { getPollKind, getQuestionType, getResponseMode, type PublicPoll } from '../../types/polls'
+import { getPollKind, getQuestionType, getResponseMode, type PollResults, type PublicPoll } from '../../types/polls'
 import { PublicFrame } from './PublicFrame'
-import { storeTestReceipt } from './attemptStore'
+import PublicResultsPage from './PublicResultsPage'
+import PersonalTestResultPage from './PersonalTestResultPage'
+import { getTestReceipt, storeTestReceipt } from './attemptStore'
 import { clearPendingTest, hasPendingTest, markPendingTest } from './pendingTest'
 import { answeredCount, buildAnswers, normalizedIdentity, validateResponses, type ResponseValues } from './model'
 import './publicVoting.css'
 
-type LoadState = 'loading' | 'ready' | 'closed' | 'unavailable' | 'missing' | 'error'
+type LoadState = 'loading' | 'ready' | 'survey-results' | 'personal-result' | 'known-test-result' | 'missing' | 'error'
 type Stage = 'form' | 'sending' | 'success' | 'error' | 'uncertain' | 'blocked'
 type TestRequest = { respondentName: string; respondentGroup: string; clientRequestId: string; answers: PublicAnswer[] }
 const emptyValues = (): ResponseValues => ({ selected: {}, texts: {}, name: '', group: '' })
@@ -25,6 +27,7 @@ function LoadingState() {
 
 export default function PublicVotingPage({ id, navigate }: { id: string; navigate: (to: string) => void }) {
   const [poll, setPoll] = useState<PublicPoll | null>(null)
+  const [finalSurveyResults, setFinalSurveyResults] = useState<PollResults | null>(null)
   const [load, setLoad] = useState<LoadState>('loading')
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [values, setValues] = useState<ResponseValues>(emptyValues)
@@ -51,21 +54,35 @@ export default function PublicVotingPage({ id, navigate }: { id: string; navigat
   useEffect(() => {
     const controller = new AbortController()
     setLoad('loading')
-    pollsApi.publicPoll(id, controller.signal).then(value => { setPoll(value); setLoad('ready') }).catch(async error => {
+    pollsApi.publicPoll(id, controller.signal).then(async value => {
+      if (controller.signal.aborted) return
+      setPoll(value)
+      if (getPollKind(value) === 'test') {
+        try {
+          const saved = await getTestReceipt(id)
+          if (!controller.signal.aborted) { setLoad(saved ? 'known-test-result' : 'ready'); return }
+        } catch { /* The form remains available when browser storage cannot be read. */ }
+      }
+      if (!controller.signal.aborted) setLoad('ready')
+    }).catch(async error => {
       if (controller.signal.aborted) return
       if (error instanceof ApiError && error.status === 409) {
         // Public 409 alone cannot distinguish an unpublished form from a closed one.
         try {
           const result = await pollsApi.results(id, controller.signal)
-          if (!controller.signal.aborted) setLoad(result.status === 'closed' && result.resultsType === 'final' ? 'closed' : 'unavailable')
+          if (!controller.signal.aborted) {
+            if (result.status === 'closed' && result.resultsType === 'final') { setFinalSurveyResults(result); setLoad('survey-results') }
+            else setLoad('personal-result')
+          }
         } catch (resultError) {
-          if (!controller.signal.aborted) setLoad(resultError instanceof ApiError && [401, 403, 404, 409].includes(resultError.status ?? 0) ? 'unavailable' : 'error')
+          if (!controller.signal.aborted) setLoad(resultError instanceof ApiError && [401, 403, 404, 409].includes(resultError.status ?? 0) ? 'personal-result' : 'error')
         }
       } else if (!controller.signal.aborted) setLoad(error instanceof ApiError && error.status === 404 ? 'missing' : 'error')
     })
     return () => controller.abort()
   }, [id, loadAttempt])
   useEffect(() => { if (stage === 'success') { window.scrollTo({ top: 0, behavior: 'instant' }); resultHeading.current?.focus() } }, [stage])
+  useEffect(() => { if (load === 'survey-results') document.title = 'Итоги опроса — AnonPulse'; else if (load === 'personal-result') document.title = 'Форма недоступна — AnonPulse'; else if (load === 'known-test-result') document.title = 'Мой результат — AnonPulse' }, [load])
   useEffect(() => {
     if (!newAttemptPrompt) return
     const previous = document.activeElement as HTMLElement | null
@@ -155,15 +172,17 @@ export default function PublicVotingPage({ id, navigate }: { id: string; navigat
     catch { setCopyMessage('Не удалось скопировать автоматически. Выделите секрет в поле и скопируйте его вручную.') }
   }
 
+  if (load === 'survey-results' && finalSurveyResults) return <PublicResultsPage id={id} navigate={navigate} initialResults={finalSurveyResults} embedded />
+  if (load === 'known-test-result') return <PersonalTestResultPage id={id} navigate={navigate} embedded />
+  if (load === 'personal-result') return <PersonalTestResultPage id={id} navigate={navigate} unverified embedded />
   if (load === 'loading') return <PublicFrame id={id} compact><LoadingState /></PublicFrame>
   if (load !== 'ready' || !poll) {
-    const closed = load === 'closed'
-    return <PublicFrame id={id} compact><StatePanel icon={closed ? 'lock' : load === 'missing' ? 'search' : 'alert'} eyebrow={closed ? 'ГОЛОСОВАНИЕ ЗАВЕРШЕНО' : load === 'missing' ? 'ССЫЛКА НЕ НАЙДЕНА' : 'ФОРМА НЕДОСТУПНА'} title={closed ? 'Опрос закрыт' : load === 'missing' ? 'Форма не найдена' : load === 'error' ? 'Не удалось открыть форму' : 'Форма сейчас недоступна'} action={closed ? <AppLink to={`/p/${id}/results`} navigate={navigate} className="vote-button vote-button--primary">Посмотреть итоги <Icon name="arrowRight" size={18} /></AppLink> : load === 'error' ? <button type="button" className="vote-button vote-button--primary" onClick={() => setLoadAttempt(value => value + 1)}>Повторить</button> : undefined}><p>{closed ? 'Приём ответов завершён. Теперь доступны итоговые результаты.' : load === 'missing' ? 'Проверьте адрес ссылки или попросите преподавателя отправить её снова.' : load === 'error' ? 'Проверьте соединение и попробуйте ещё раз.' : 'Форма может быть ещё не опубликована или уже закрыта. По одному ответу сервера определить причину нельзя.'}</p></StatePanel></PublicFrame>
+    return <PublicFrame id={id} compact><StatePanel icon={load === 'missing' ? 'search' : 'alert'} eyebrow={load === 'missing' ? 'ССЫЛКА НЕ НАЙДЕНА' : 'ФОРМА НЕДОСТУПНА'} title={load === 'missing' ? 'Форма не найдена' : 'Не удалось открыть форму'} action={load === 'error' ? <button type="button" className="vote-button vote-button--primary" onClick={() => setLoadAttempt(value => value + 1)}>Повторить</button> : undefined}><p>{load === 'missing' ? 'Проверьте адрес ссылки или попросите преподавателя отправить её снова.' : 'Проверьте соединение и попробуйте ещё раз.'}</p></StatePanel></PublicFrame>
   }
   if (!questions.length) return <PublicFrame id={id} compact><StatePanel icon="layers" eyebrow="НЕТ ВОПРОСОВ" title="Форма пуста"><p>Сообщите преподавателю, что в форме нет вопросов.</p></StatePanel></PublicFrame>
 
   const title = poll.title?.trim() || questions[0]?.text || (isTest ? 'Тест без названия' : 'Опрос без названия')
-  if (stage === 'success') return <PublicFrame id={id} compact><section className="vote-success" aria-labelledby="vote-success-title"><span className="vote-success__symbol"><Icon name="check" size={34} /></span><p className="vote-eyebrow">{isTest ? 'ПОПЫТКА СОХРАНЕНА' : 'ОТВЕТ ПРИНЯТ'}</p><h1 ref={resultHeading} tabIndex={-1} id="vote-success-title">{isTest ? 'Тест отправлен' : 'Ваш ответ учтён'}</h1><p>Спасибо за участие в {isTest ? 'тесте' : 'опросе'} «{title}».</p>{isTest && receipt ? <div className="vote-secret"><label htmlFor="vote-secret-value">Секрет доступа к личному результату</label><div className="vote-secret__row"><input id="vote-secret-value" readOnly value={receipt.accessSecret} onFocus={event => event.currentTarget.select()} /><button type="button" className="vote-button vote-button--secondary" onClick={() => void copySecret()}>Скопировать</button></div><p>Сохраните секрет в надёжном месте. Он понадобится для просмотра личного результата, когда эта функция появится. Сервер покажет его только сейчас.</p>{storageWarning && <p className="vote-secret__warning" role="alert">{storageWarning}</p>}{copyMessage && <p role="status">{copyMessage}</p>}</div> : <div className="vote-success__note"><Icon name="info" size={19} /><span>Повторное участие из этого браузера ограничено сервером. Итоговые результаты станут доступны после закрытия опроса.</span></div>}</section></PublicFrame>
+  if (stage === 'success') return <PublicFrame id={id} compact><section className="vote-success" aria-labelledby="vote-success-title"><span className="vote-success__symbol"><Icon name="check" size={34} /></span><p className="vote-eyebrow">{isTest ? 'ПОПЫТКА СОХРАНЕНА' : 'ОТВЕТ ПРИНЯТ'}</p><h1 ref={resultHeading} tabIndex={-1} id="vote-success-title">{isTest ? 'Тест отправлен' : 'Ваш ответ учтён'}</h1><p>Спасибо за участие в {isTest ? 'тесте' : 'опросе'} «{title}».</p>{isTest && receipt ? <div className="vote-secret"><label htmlFor="vote-attempt-id">Идентификатор попытки</label><input id="vote-attempt-id" readOnly value={receipt.attemptId} onFocus={event => event.currentTarget.select()} /><label htmlFor="vote-secret-value">Секрет доступа к личному результату</label><div className="vote-secret__row"><input id="vote-secret-value" readOnly value={receipt.accessSecret} onFocus={event => event.currentTarget.select()} /><button type="button" className="vote-button vote-button--secondary" onClick={() => void copySecret()}>Скопировать</button></div><p>Сохраните секрет в надёжном месте. Он понадобится для просмотра личного результата после проверки преподавателем. Сервер покажет его только сейчас.</p>{storageWarning && <p className="vote-secret__warning" role="alert">{storageWarning}</p>}{copyMessage && <p role="status">{copyMessage}</p>}<AppLink to={`/p/${id}/my-result`} navigate={navigate} className="vote-button vote-button--primary">Мой результат <Icon name="arrowRight" size={18} /></AppLink></div> : <div className="vote-success__note"><Icon name="info" size={19} /><span>Повторное участие из этого браузера ограничено сервером. Итоговые результаты станут доступны после закрытия опроса.</span></div>}</section></PublicFrame>
 
   return <PublicFrame id={id}><div className="vote-intro"><div className="vote-intro__top"><p className="vote-eyebrow"><span className="vote-eyebrow__dot" />{isTest ? 'ТЕСТ · ПРОВЕРКА ЗНАНИЙ' : identified ? 'ИМЕННОЙ ОПРОС' : 'АНОНИМНЫЙ ОПРОС'}</p><span className="vote-intro__time"><Icon name="list" size={16} />{questions.length} {questions.length === 1 ? 'вопрос' : questions.length < 5 ? 'вопроса' : 'вопросов'}</span></div><h1>{title}</h1><p className="vote-intro__lead">Ответьте на все вопросы. Ответы можно изменить до отправки.</p><div className="vote-progress"><div className="vote-progress__labels"><strong>{count} из {questions.length} заполнено</strong><span>{Math.round(count / questions.length * 100)}%</span></div><div className="vote-progress__track" role="progressbar" aria-valuemin={0} aria-valuemax={questions.length} aria-valuenow={count} aria-label="Заполнено вопросов"><span style={{ width: `${count / questions.length * 100}%` }} /></div></div></div>
     <section className="vote-privacy" aria-labelledby="vote-privacy-title"><span className="vote-privacy__icon"><Icon name={identified ? 'info' : 'lock'} size={19} /></span><div><h2 id="vote-privacy-title">{isTest ? 'Об участии в тесте' : identified ? 'Об именном участии' : 'Об анонимности'}</h2><p>{isTest ? 'Аккаунт не нужен. Имя и группу вы указываете самостоятельно; они не подтверждают личность. После отправки сохраните секрет доступа к будущему личному результату.' : identified ? 'Аккаунт не нужен. Вы сами указываете отображаемое имя; оно будет связано с ответами и доступно преподавателю после закрытия опроса. Техническая cookie ограничивает повторное участие в этом браузере.' : 'Вход не нужен. Ответы не связываются с аккаунтом. Техническая cookie ограничивает повторное участие в этом браузере. Абсолютная анонимность не гарантируется: инфраструктура может обрабатывать технические данные.'}</p></div></section>

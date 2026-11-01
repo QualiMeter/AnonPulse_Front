@@ -8,6 +8,7 @@ import { toPollDraft, type BuilderForm } from './features/pollBuilder/model'
 import BuilderPage from './features/pollBuilder/BuilderPage'
 import PublicVotingPage from './features/publicVoting/PublicVotingPage'
 import PublicResultsPage from './features/publicVoting/PublicResultsPage'
+import PersonalTestResultPage from './features/publicVoting/PersonalTestResultPage'
 import DecisionPanel from './features/decisions/DecisionPanel'
 import LoginPage from './features/auth/LoginPage'
 import { SurveyPrivateResults, TestAttempts } from './features/teacherResults/TeacherResultDetails'
@@ -160,6 +161,7 @@ function DetailPage({ poll, navigate, decision, onPublish, onRequestClose, notic
       <aside className="detail-aside"><section className="aside-card action-card"><h2>Действия</h2>{hasResults && <AppLink to={`/app/polls/${poll.id}/results`} navigate={navigate} className="button button--dark action-card__primary"><Icon name="barChart" size={18} />Посмотреть результаты<Icon name="arrowRight" size={18} /></AppLink>}
         {poll.status === 'draft' && <><AppLink to={`/app/polls/${poll.id}/edit`} navigate={navigate} className="button button--dark action-card__primary"><Icon name="edit" size={17} />Редактировать черновик<Icon name="arrowRight" size={18} /></AppLink><div className="future-actions"><button type="button" onClick={onPublish} disabled={actionBusy}><Icon name="check" size={17} />{actionBusy ? 'Публикуем…' : 'Опубликовать'}</button></div></>}
         {poll.status === 'open' && <div className="future-actions"><AppLink to={`/p/${poll.id}`} navigate={navigate}><Icon name="eye" size={17} />Открыть страницу прохождения</AppLink><button type="button" onClick={copyVotingLink}><Icon name="link" size={17} />Скопировать ссылку</button><button type="button" onClick={onRequestClose} disabled={actionBusy}><Icon name="lock" size={17} />Закрыть {getPollKind(poll) === 'test' ? 'тест' : 'опрос'}</button></div>}
+        {poll.status === 'closed' && <div className="future-actions"><button type="button" onClick={copyVotingLink}><Icon name="link" size={17} />Скопировать ссылку</button></div>}
         {copyFeedback && <p className="action-card__feedback" role="status">{copyFeedback}</p>}
         {actionError && <p className="action-card__feedback" role="alert">{actionError}</p>}
         <p className="action-card__note">{poll.status === 'closed' ? 'Эта форма больше не принимает ответы.' : poll.status === 'open' ? 'Отправьте ссылку студентам. После закрытия новые ответы не принимаются.' : 'После публикации редактирование будет недоступно.'}</p>
@@ -223,7 +225,7 @@ export default function App() {
   const [pendingPath, setPendingPath] = useState<string | null>(null)
   const [closingPollId, setClosingPollId] = useState<string | null>(null)
   const { path, navigate, goAnyway } = usePathname(dirtyRef, setPendingPath)
-  const isPublicPage = /^\/p\/[^/]+(?:\/results)?$/.test(path)
+  const isPublicPage = /^\/p\/[^/]+(?:\/(?:results|my-result))?$/.test(path)
   const isLoginPage = path === '/login'
   const parts = path.split('/').filter(Boolean)
   const activePollId = parts[0] === 'app' && parts[1] === 'polls' && parts[2] && parts[2] !== 'new' ? parts[2] : null
@@ -327,7 +329,7 @@ export default function App() {
   const onDirtyChange = useCallback((dirty: boolean) => { dirtyRef.current = dirty }, [])
   const leaveDialogRef = useRef<HTMLElement>(null)
   const closeDialogRef = useRef<HTMLElement>(null)
-  useEffect(() => { document.title = path === '/login' ? 'Вход — AnonPulse' : path.startsWith('/p/') ? path.endsWith('/results') ? 'Итоги опроса — AnonPulse' : 'Голосование — AnonPulse' : path.endsWith('/results') ? 'Результаты — AnonPulse' : path.endsWith('/edit') || path.endsWith('/new') ? 'Конструктор — AnonPulse' : path === '/app/polls' || path === '/' ? 'Опросы — AnonPulse' : 'Опрос — AnonPulse' }, [path])
+  useEffect(() => { document.title = path === '/login' ? 'Вход — AnonPulse' : path.endsWith('/my-result') ? 'Мой результат — AnonPulse' : path.startsWith('/p/') ? path.endsWith('/results') ? 'Итоги опроса — AnonPulse' : 'Голосование — AnonPulse' : path.endsWith('/results') ? 'Результаты — AnonPulse' : path.endsWith('/edit') || path.endsWith('/new') ? 'Конструктор — AnonPulse' : path === '/app/polls' || path === '/' ? 'Опросы — AnonPulse' : 'Опрос — AnonPulse' }, [path])
   useEffect(() => {
     if (!pendingPath) return
     const previousOverflow = document.body.style.overflow
@@ -401,6 +403,7 @@ export default function App() {
     setDecision(saved)
     setDecisionStatus('ready')
   }
+  if (parts[0] === 'p' && parts.length === 3 && parts[2] === 'my-result') return <PersonalTestResultPage key={parts[1]} id={parts[1]} navigate={navigate} />
   if (parts[0] === 'p' && parts.length === 3 && parts[2] === 'results') return <PublicResultsPage key={parts[1]} id={parts[1]} navigate={navigate} />
   if (parts[0] === 'p' && parts.length === 2) return <PublicVotingPage key={parts[1]} id={parts[1]} navigate={navigate} />
   if (isLoginPage) return auth.status === 'authenticated' ? <div className="auth-route-state"><p>Сессия активна.</p><button className="button button--primary" onClick={() => goAnyway('/app/polls')}>Открыть кабинет</button></div> : auth.status === 'unchecked' || auth.status === 'checking' ? <div className="auth-route-state" role="status">Проверяем сессию…</div> : <LoginPage onSignedIn={onSignedIn} />

@@ -4,6 +4,7 @@ export type { PollDraft } from '../types/polls'
 
 export type PublicAnswer = { questionId: string; optionId: string } | { questionId: string; text: string }
 export type TestSubmissionReceipt = { attemptId: string; accessSecret: string }
+export type PersonalTestResult = { attemptId: string; isFinal: false } | { attemptId: string; isFinal: true; testTitle: string | null; respondentName: string; respondentGroup: string; rawScore: number; maximumScore: number; normalizedScore: number; testScale: 5 | 10 | 12 | 100; answers: Array<{ answerId: string; questionId: string; questionText: string; selectedOptionIds: string[]; selectedOptions: Array<{ text: string }>; text: string | null; score: number; maximumScore: number }> }
 
 const pollPath = (id: string) => `/api/polls/${encodeURIComponent(id)}` as const
 const publicPollPath = (id: string) => `/api/public/polls/${encodeURIComponent(id)}` as const
@@ -54,4 +55,5 @@ export const pollsApi = {
     if (!receipt || typeof receipt.attemptId !== 'string' || typeof receipt.accessSecret !== 'string' || !receipt.attemptId || !receipt.accessSecret) throw new ApiError('Сервер вернул неполное подтверждение попытки.', 201)
     return receipt
   },
+  personalTestResult: (pollId: string, attemptId: string, accessSecret: string, signal?: AbortSignal) => apiRequest<PersonalTestResult>(`${publicPollPath(pollId)}/test-attempts/${encodeURIComponent(attemptId)}/result`, { method: 'POST', body: { accessSecret }, signal, cache: 'no-store' }),
 }
