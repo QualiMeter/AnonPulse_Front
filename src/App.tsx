@@ -12,6 +12,7 @@ import PersonalTestResultPage from './features/publicVoting/PersonalTestResultPa
 import DecisionPanel from './features/decisions/DecisionPanel'
 import LoginPage from './features/auth/LoginPage'
 import { SurveyPrivateResults, TestAttempts } from './features/teacherResults/TeacherResultDetails'
+import AdminPage from './features/admin/AdminPage'
 import { authApi, type CurrentUser } from './api/auth'
 import { ApiError } from './api/client'
 import { pollsApi } from './api/polls'
@@ -88,6 +89,7 @@ function Shell({ children, navigate, user, onLogout, logoutBusy, logoutError }: 
       <aside className="side-nav" aria-label="Навигация">
         <span className="side-nav__eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</span>
         <AppLink to="/app/polls" navigate={navigate} className="side-nav__item side-nav__item--active"><Icon name="layers" size={19} /><span>Опросы и тесты</span></AppLink>
+        {user.roles.includes('admin') && <AppLink to="/admin" navigate={navigate} className="side-nav__item"><Icon name="list" size={19} /><span>Администрирование</span></AppLink>}
         <div className="side-nav__footer"><span className="side-nav__footer-icon"><Icon name="info" size={17} /></span><p>Обратная связь<br />от опроса до решения</p></div>
       </aside>
       <main className="main-content" id="main-content">{logoutError && <p className="session-error" role="alert">{logoutError}</p>}{children}</main>
@@ -239,7 +241,7 @@ export default function App() {
     if (isPublicPage || auth.status !== 'unchecked') return
     const controller = new AbortController()
     setAuth({ status: 'checking' })
-    authApi.me(controller.signal).then(user => setAuth(user.roles.includes('teacher') ? { status: 'authenticated', user } : { status: 'forbidden', user })).catch(error => {
+    authApi.me(controller.signal).then(user => setAuth(user.roles.includes('teacher') || user.roles.includes('admin') ? { status: 'authenticated', user } : { status: 'forbidden', user })).catch(error => {
       if (error instanceof DOMException && error.name === 'AbortError') return
       setAuth({ status: error instanceof ApiError && error.status === 401 ? 'anonymous' : 'error' })
     })
@@ -304,7 +306,7 @@ export default function App() {
   const onSignedIn = (user: CurrentUser) => {
     setAuth({ status: 'authenticated', user })
     const requested = new URLSearchParams(window.location.search).get('next')
-    goAnyway(requested?.startsWith('/app/') || requested === '/' ? requested : '/app/polls')
+    goAnyway(requested?.startsWith('/app/') && user.roles.includes('teacher') || requested?.startsWith('/admin') && user.roles.includes('admin') ? requested : user.roles.includes('admin') ? '/admin' : '/app/polls')
   }
   const performLogout = async () => {
     setLogoutError('')
@@ -329,7 +331,7 @@ export default function App() {
   const onDirtyChange = useCallback((dirty: boolean) => { dirtyRef.current = dirty }, [])
   const leaveDialogRef = useRef<HTMLElement>(null)
   const closeDialogRef = useRef<HTMLElement>(null)
-  useEffect(() => { document.title = path === '/login' ? 'Вход — AnonPulse' : path.endsWith('/my-result') ? 'Мой результат — AnonPulse' : path.startsWith('/p/') ? path.endsWith('/results') ? 'Итоги опроса — AnonPulse' : 'Голосование — AnonPulse' : path.endsWith('/results') ? 'Результаты — AnonPulse' : path.endsWith('/edit') || path.endsWith('/new') ? 'Конструктор — AnonPulse' : path === '/app/polls' || path === '/' ? 'Опросы — AnonPulse' : 'Опрос — AnonPulse' }, [path])
+  useEffect(() => { document.title = path === '/login' ? 'Вход — AnonPulse' : path === '/admin' || path.startsWith('/admin/') ? 'Администрирование — AnonPulse' : path.endsWith('/my-result') ? 'Мой результат — AnonPulse' : path.startsWith('/p/') ? path.endsWith('/results') ? 'Итоги опроса — AnonPulse' : 'Голосование — AnonPulse' : path.endsWith('/results') ? 'Результаты — AnonPulse' : path.endsWith('/edit') || path.endsWith('/new') ? 'Конструктор — AnonPulse' : path === '/app/polls' || path === '/' ? 'Опросы — AnonPulse' : 'Опрос — AnonPulse' }, [path])
   useEffect(() => {
     if (!pendingPath) return
     const previousOverflow = document.body.style.overflow
@@ -406,10 +408,12 @@ export default function App() {
   if (parts[0] === 'p' && parts.length === 3 && parts[2] === 'my-result') return <PersonalTestResultPage key={parts[1]} id={parts[1]} navigate={navigate} />
   if (parts[0] === 'p' && parts.length === 3 && parts[2] === 'results') return <PublicResultsPage key={parts[1]} id={parts[1]} navigate={navigate} />
   if (parts[0] === 'p' && parts.length === 2) return <PublicVotingPage key={parts[1]} id={parts[1]} navigate={navigate} />
-  if (isLoginPage) return auth.status === 'authenticated' ? <div className="auth-route-state"><p>Сессия активна.</p><button className="button button--primary" onClick={() => goAnyway('/app/polls')}>Открыть кабинет</button></div> : auth.status === 'unchecked' || auth.status === 'checking' ? <div className="auth-route-state" role="status">Проверяем сессию…</div> : <LoginPage onSignedIn={onSignedIn} />
+  if (isLoginPage) return auth.status === 'authenticated' ? <div className="auth-route-state"><p>Сессия активна.</p><button className="button button--primary" onClick={() => goAnyway(auth.user?.roles.includes('admin') ? '/admin' : '/app/polls')}>Открыть кабинет</button></div> : auth.status === 'unchecked' || auth.status === 'checking' ? <div className="auth-route-state" role="status">Проверяем сессию…</div> : <LoginPage onSignedIn={onSignedIn} />
   if (auth.status === 'unchecked' || auth.status === 'checking' || auth.status === 'anonymous') return <div className="auth-route-state" role="status">Проверяем сессию…</div>
-  if (auth.status === 'forbidden') return <div className="auth-route-state"><Brand /><h1>Нет доступа к кабинету преподавателя</h1><p>Эта учётная запись не имеет роли преподавателя.</p><button type="button" className="button button--primary" onClick={onLogout} disabled={logoutBusy}>Выйти</button>{logoutError && <p role="alert">{logoutError}</p>}</div>
+  if (auth.status === 'forbidden') return <div className="auth-route-state"><Brand /><h1>Нет доступа к рабочему пространству</h1><p>Эта учётная запись не имеет роли преподавателя или администратора.</p><button type="button" className="button button--primary" onClick={onLogout} disabled={logoutBusy}>Выйти</button>{logoutError && <p role="alert">{logoutError}</p>}</div>
   if (auth.status === 'error' || !auth.user) return <div className="auth-route-state"><Brand /><h1>Не удалось проверить доступ</h1><p>Кабинет откроется после успешной проверки серверной сессии.</p><button type="button" className="button button--primary" onClick={() => { setAuth({ status: 'unchecked' }); setAuthAttempt(value => value + 1) }}>Повторить проверку</button><button type="button" className="header-logout" onClick={() => goAnyway('/login')}>Перейти ко входу</button></div>
+  if (path === '/admin' || path.startsWith('/admin/') || path === '/' && auth.user.roles.includes('admin')) return auth.user.roles.includes('admin') ? <AdminPage section={parts[1] === 'users' || parts[1] === 'polls' || parts[1] === 'audit' ? parts[1] : 'dashboard'} user={auth.user} navigate={navigate} onLogout={onLogout} logoutBusy={logoutBusy} logoutError={logoutError} /> : <div className="auth-route-state"><h1>Нет доступа</h1><p>Административный раздел доступен только пользователям с ролью admin.</p><button onClick={() => navigate('/app/polls')}>К опросам</button></div>
+  if (!auth.user.roles.includes('teacher')) return <div className="auth-route-state"><h1>Нет доступа</h1><p>Кабинет преподавателя доступен только пользователям с ролью teacher.</p><button onClick={() => navigate('/admin')}>К администрированию</button></div>
   const poll = activePollId && detail?.id === activePollId && detail.status === 'ready' ? detail.poll : undefined
   let content: ReactNode
   if (path === '/' || path === '/app/polls') content = listStatus === 'error' ? <ResourceState title="Не удалось загрузить опросы" message={listError} retry={() => setListRefresh(value => value + 1)} navigate={navigate} /> : listStatus !== 'ready' ? <ResourceState title="Загружаем опросы" message="Получаем ваши опросы с сервера." navigate={navigate} loading /> : <Dashboard polls={polls} navigate={navigate} />
