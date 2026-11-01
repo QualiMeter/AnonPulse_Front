@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError } from '../../api/client'
 import { pollsApi } from '../../api/polls'
 import { Icon } from '../../components/Icon'
 import { AppLink } from '../../components/AppLink'
 import { FeedbackAnalysisPanel } from './FeedbackAnalysisPanel'
 import { AttemptGrading } from './AttemptGrading'
-import { getQuestionType, getResponseMode, type IdentifiedSubmission, type PagedResponse, type Poll, type TestAttempt, type TextAnswer } from '../../types/polls'
+import { KnowledgeGradingPanel } from './KnowledgeGradingPanel'
+import { getQuestionType, getResponseMode, type IdentifiedSubmission, type KnowledgeSuggestion, type PagedResponse, type Poll, type TestAttempt, type TextAnswer } from '../../types/polls'
 import './teacherResults.css'
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'
@@ -92,6 +93,8 @@ export function SurveyPrivateResults({ poll, textQuestions }: { poll: Poll; text
 
 export function TestAttempts({ poll, navigate }: { poll: Poll; navigate: (to: string) => void }) {
   const [page, setPage] = useState(1)
+  const [suggestions, setSuggestions] = useState<Record<string, KnowledgeSuggestion>>({})
+  const addSuggestions = useCallback((items: KnowledgeSuggestion[]) => setSuggestions(current => ({ ...current, ...Object.fromEntries(items.map(item => [item.answerId, item])) })), [])
   const { data, state, error, retry } = usePaged<TestAttempt>(poll.id, true, page, (value, signal) => pollsApi.testAttempts(poll.id, value, signal))
 
   return <div className="page page--results">
@@ -104,6 +107,7 @@ export function TestAttempts({ poll, navigate }: { poll: Poll; navigate: (to: st
     <div className="teacher-test-summary"><div><strong>{data?.totalCount ?? '—'}</strong><span>попыток</span></div><div className="teacher-test-summary__scale">Шкала: <strong>{poll.testScale ?? '—'} баллов</strong></div><button type="button" onClick={retry} disabled={state === 'loading'}>{state === 'loading' ? 'Обновляем…' : 'Обновить'}</button></div>
     <section className="teacher-private-section" aria-labelledby="test-attempts-title">
       <div className="section-title"><div><p className="eyebrow">ОТВЕТЫ УЧАСТНИКОВ</p><h2 id="test-attempts-title">Попытки тестирования</h2></div></div>
+      {data && data.totalCount > 0 && poll.questions.filter(question => getQuestionType(question) === 'text' && question.textPurpose === 'knowledge').map(question => { const pending = data.items.filter(item => item.answers.some(answer => answer.questionId === question.id && answer.gradingState === 'pending')).length; return <KnowledgeGradingPanel key={question.id} pollId={poll.id} questionId={question.id} questionText={question.text} pending={pending} onSuggestions={addSuggestions} /> })}
       {state === 'loading' && data && <p className="teacher-refresh-status" role="status">Обновляем баллы…</p>}
       <LoadArea state={state === 'loading' && data ? 'ready' : state} error={error} retry={retry}>
         {data?.items.length ? <div className="teacher-person-list">{data.items.map((item, index) => {
@@ -121,7 +125,7 @@ export function TestAttempts({ poll, navigate }: { poll: Poll; navigate: (to: st
               <div><span>Состояние проверки</span><strong>{waiting > 0 ? pendingLabel(waiting) : item.isFullyGraded ? 'Все задания проверены' : 'Проверка не завершена'}</strong></div>
               <p>{item.normalizedScore === null ? 'Оценка пока недоступна.' : `${final ? 'Итоговая' : 'Предварительная'} оценка по шкале ${poll.testScale ?? '—'}: ${item.normalizedScore}.`}</p>
             </div>
-            <AttemptGrading poll={poll} attempt={item} onUpdated={retry} />
+            <AttemptGrading poll={poll} attempt={item} suggestions={suggestions} onUpdated={retry} />
           </details>
         })}</div> : <p className="teacher-data-state">Попыток пока нет.</p>}
         {data && <PageControls page={data.page} totalPages={data.totalPages} totalCount={data.totalCount} onPage={setPage} />}

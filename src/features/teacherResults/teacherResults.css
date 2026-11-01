@@ -77,6 +77,12 @@
 .teacher-answer-key > div { padding: 0 12px 12px; }
 .teacher-answer-key strong { display: block; margin-top: 10px; font-size: 11px; }
 .teacher-answer-key p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.teacher-knowledge-panel, .teacher-ai-suggestion { margin: 0 0 14px; padding: 16px; border: 1px solid #dce9df; border-radius: 9px; background: #f7faf6; color: #365140; font-size: 12px; line-height: 1.5; }
+.teacher-knowledge-panel h3 { margin: 5px 0; font-size: 15px; }
+.teacher-knowledge-panel p, .teacher-ai-suggestion p { margin: 7px 0; }
+.teacher-knowledge-panel button, .teacher-ai-suggestion button { margin: 7px 8px 0 0; }
+.teacher-ai-suggestion { margin: 12px 0 0; }
+.teacher-ai-suggestion__warning { color: #9a6640; font-weight: 700; }
 .teacher-private-card__toggle:focus-visible, .teacher-person > summary:focus-visible, .teacher-pages button:focus-visible, .teacher-test-summary button:focus-visible { outline: 3px solid #65b88e; outline-offset: 2px; }
 @media (max-width: 640px) {
   .teacher-private-results { margin-top: 28px; gap: 30px; }

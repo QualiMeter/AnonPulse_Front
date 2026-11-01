@@ -64,6 +64,9 @@ export type TextAnswer = { id: string; text: string }
 export type IdentifiedSubmission = { id: string; respondentName: string; answers: Array<{ questionId: string; selectedOptionIds: string[]; text: string | null }> }
 export type TestAttemptAnswer = { answerId: string; questionId: string; selectedOptionIds: string[]; text: string | null; gradingState: string; score: number | null; maximumScore: number }
 export type GradeHistory = { attemptId: string; changes: Array<{ id: string; answerId: string; oldScore: number | null; newScore: number; source: 'manual' | 'ai_suggestion'; changedAt: string }>; finalizedAt: string | null }
+export type KnowledgeJob = { id: string; pollId: string; questionId: string; status: 'pending' | 'processing' | 'completed' | 'failed'; answerCount: number; suggestedCount: number; errorCode: string | null }
+export type KnowledgeSuggestion = { suggestionId: string; answerId: string; suggestedScore: number; maxScore: number; explanation: string; correctPoints: string[]; missingOrIncorrectPoints: string[]; needsReview: boolean; reviewReasons: string[] }
+export type KnowledgeResults = { jobId: string; items: KnowledgeSuggestion[]; page: number; pageSize: number; totalCount: number; totalPages: number }
 export type TestAttempt = {
   id: string
   respondentName: string
