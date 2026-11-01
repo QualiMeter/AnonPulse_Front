@@ -1,5 +1,5 @@
 import { ApiError, apiRequest } from './client'
-import type { Decision, FeedbackAnalysis, IdentifiedSubmission, PagedResponse, Poll, PollDraft, PollResults, PublicPoll, TestAttempt, TextAnswer } from '../types/polls'
+import type { Decision, FeedbackAnalysis, GradeHistory, IdentifiedSubmission, PagedResponse, Poll, PollDraft, PollResults, PublicPoll, TestAttempt, TextAnswer } from '../types/polls'
 export type { PollDraft } from '../types/polls'
 
 export type PublicAnswer = { questionId: string; optionId: string } | { questionId: string; text: string }
@@ -8,6 +8,12 @@ export type TestSubmissionReceipt = { attemptId: string; accessSecret: string }
 const pollPath = (id: string) => `/api/polls/${encodeURIComponent(id)}` as const
 const publicPollPath = (id: string) => `/api/public/polls/${encodeURIComponent(id)}` as const
 const analysisPath = (id: string, questionId: string) => `${pollPath(id)}/questions/${encodeURIComponent(questionId)}/feedback-analysis` as const
+const attemptPath = (pollId: string, attemptId: string) => `${pollPath(pollId)}/test-attempts/${encodeURIComponent(attemptId)}` as const
+async function csrfToken() {
+  const response = await apiRequest<{ token: string }>('/api/auth/csrf-token', { authRequired: true, cache: 'no-store' })
+  if (!response?.token) throw new ApiError('Не удалось получить защитный токен.', null)
+  return response.token
+}
 
 function requireMatchingAnalysis(value: FeedbackAnalysis, pollId: string, questionId: string) {
   if (!value || value.pollId?.toLowerCase() !== pollId.toLowerCase() || value.questionId?.toLowerCase() !== questionId.toLowerCase()) throw new ApiError('Сервер вернул анализ для другой формы или вопроса.', null)
@@ -25,6 +31,9 @@ export const pollsApi = {
   textAnswers: (id: string, questionId: string, page = 1, signal?: AbortSignal) => apiRequest<PagedResponse<TextAnswer>>(`${pollPath(id)}/questions/${encodeURIComponent(questionId)}/text-answers?page=${page}&pageSize=20`, { signal, authRequired: true, cache: 'no-store' }),
   submissions: (id: string, page = 1, signal?: AbortSignal) => apiRequest<PagedResponse<IdentifiedSubmission>>(`${pollPath(id)}/submissions?page=${page}&pageSize=20`, { signal, authRequired: true, cache: 'no-store' }),
   testAttempts: (id: string, page = 1, signal?: AbortSignal) => apiRequest<PagedResponse<TestAttempt>>(`${pollPath(id)}/test-attempts?page=${page}&pageSize=20`, { signal, authRequired: true, cache: 'no-store' }),
+  gradeAnswer: async (pollId: string, attemptId: string, answerId: string, score: number) => apiRequest<{ answerId: string; score: number; gradingState: string }>(`${attemptPath(pollId, attemptId)}/answers/${encodeURIComponent(answerId)}/grade`, { method: 'PUT', body: { score, suggestionId: null }, headers: { 'X-CSRF-TOKEN': await csrfToken() }, authRequired: true, cache: 'no-store' }),
+  finalizeAttempt: async (pollId: string, attemptId: string) => apiRequest<{ attemptId: string; isFinal: boolean }>(`${attemptPath(pollId, attemptId)}/finalize`, { method: 'POST', headers: { 'X-CSRF-TOKEN': await csrfToken() }, authRequired: true, cache: 'no-store' }),
+  gradeHistory: (pollId: string, attemptId: string, signal?: AbortSignal) => apiRequest<GradeHistory>(`${attemptPath(pollId, attemptId)}/grade-history`, { signal, authRequired: true, cache: 'no-store' }),
   feedbackAnalysis: async (id: string, questionId: string, signal?: AbortSignal) => requireMatchingAnalysis(await apiRequest<FeedbackAnalysis>(analysisPath(id, questionId), { signal, authRequired: true, cache: 'no-store' }), id, questionId),
   startFeedbackAnalysis: async (id: string, questionId: string) => {
     const csrf = await apiRequest<{ token: string }>('/api/auth/csrf-token', { authRequired: true, cache: 'no-store' })

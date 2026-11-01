@@ -62,7 +62,8 @@ export type Decision = { id: string; pollId: string; text: string; publishedAt: 
 export type PagedResponse<T> = { items: T[]; page: number; pageSize: number; totalCount: number; totalPages: number }
 export type TextAnswer = { id: string; text: string }
 export type IdentifiedSubmission = { id: string; respondentName: string; answers: Array<{ questionId: string; selectedOptionIds: string[]; text: string | null }> }
-export type TestAttemptAnswer = { questionId: string; selectedOptionIds: string[]; text: string | null; gradingState: string; score: number | null; maximumScore: number }
+export type TestAttemptAnswer = { answerId: string; questionId: string; selectedOptionIds: string[]; text: string | null; gradingState: string; score: number | null; maximumScore: number }
+export type GradeHistory = { attemptId: string; changes: Array<{ id: string; answerId: string; oldScore: number | null; newScore: number; source: 'manual' | 'ai_suggestion'; changedAt: string }>; finalizedAt: string | null }
 export type TestAttempt = {
   id: string
   respondentName: string
